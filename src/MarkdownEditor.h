@@ -23,8 +23,11 @@ public:
     MarkdownHighlighter *highlighter() const { return m_highlighter; }
 
     bool isSourceMode() const { return m_sourceMode; }
-    /// 源代码模式：关掉语法高亮、行号与当前行高亮，只看文件原始内容。
+    /// 源代码模式：等宽字体 + 行号 + 每行一条细线，原样显示标记。
     void setSourceMode(bool enabled);
+
+    /// 给全文套一层统一的段落节奏（行高、段间距），加载文档后调用一次。
+    void applyBlockRhythm();
 
     /// 把选中的行设为 N 级标题（1–6）；整段已经是这一级时改回正文。
     void setHeadingLevel(int level);
@@ -38,6 +41,7 @@ signals:
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
+    void paintEvent(QPaintEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
     void dragEnterEvent(QDragEnterEvent *event) override;
@@ -53,6 +57,7 @@ private slots:
 
 private:
     void applyEditorFont();
+    void updateViewportMargins();
     void indentSelection(bool outdent);
     bool acceptsLocalFiles(const QMimeData *mime) const;
     void selectedBlockRange(int *firstBlock, int *lastBlock) const;

@@ -12,6 +12,7 @@
 #include <QKeyEvent>
 #include <QMimeData>
 #include <QPainter>
+#include <QPaintEvent>
 #include <QRegularExpression>
 #include <QTextBlock>
 #include <QTextCursor>
@@ -22,6 +23,23 @@
 namespace {
 
 constexpr int kLineNumberRightPadding = 14;
+constexpr int kMaxTextWidth = 760;
+
+QStringList proseFamilies()
+{
+    return {QStringLiteral("Noto Sans CJK SC"), QStringLiteral("Source Han Sans SC"),
+            QStringLiteral("WenQuanYi Micro Hei"), QStringLiteral("Microsoft YaHei"),
+            QStringLiteral("PingFang SC"), QStringLiteral("Segoe UI"),
+            QStringLiteral("DejaVu Sans")};
+}
+
+QStringList monospaceFamilies()
+{
+    return {QStringLiteral("JetBrains Mono"), QStringLiteral("Cascadia Code"),
+            QStringLiteral("Source Han Mono SC"), QStringLiteral("Noto Sans Mono CJK SC"),
+            QStringLiteral("Sarasa Mono SC"), QStringLiteral("Consolas"),
+            QStringLiteral("DejaVu Sans Mono")};
+}
 
 const QString &fenceMarker()
 {
@@ -88,8 +106,8 @@ MarkdownEditor::MarkdownEditor(QWidget *parent)
     connect(ThemeManager::instance(), &ThemeManager::schemeChanged,
             this, &MarkdownEditor::applyTheme);
 
+    m_lineNumberArea->setVisible(m_sourceMode);
     applyEditorFont();
-    updateLineNumberAreaWidth(0);
     updateCurrentLineHighlight();
 }
 
@@ -147,31 +165,45 @@ void MarkdownEditor::setEditorFontPointSize(int points)
 
 void MarkdownEditor::applyEditorFont()
 {
-    QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
-    font.setFamilies({QStringLiteral("JetBrains Mono"),
-                      QStringLiteral("Cascadia Code"),
-                      QStringLiteral("Source Han Mono SC"),
-                      QStringLiteral("Noto Sans Mono CJK SC"),
-                      QStringLiteral("Sarasa Mono SC"),
-                      QStringLiteral("Consolas"),
-                      QStringLiteral("DejaVu Sans Mono")});
+    QFont font;
+    if (m_sourceMode) {
+        font.setFamilies(monospaceFamilies());
+        font.setStyleHint(QFont::Monospace);
+        font.setFixedPitch(true);
+    } else {
+        font.setFamilies(proseFamilies());
+        font.setStyleHint(QFont::SansSerif);
+    }
     font.setPointSize(m_fontPointSize);
-    font.setStyleHint(QFont::Monospace);
-    font.setFixedPitch(true);
 
     setFont(font);
     document()->setDefaultFont(font);
     setTabStopDistance(QFontMetricsF(font).horizontalAdvance(QLatin1Char(' ')) * 4.0);
-    updateLineNumberAreaWidth(0);
+    updateViewportMargins();
 
-    // 标题字号是根据正文大小算的，缩放后要让高亮层重建格式。
+    // 标题字号是根据正文大小算的，缩放 / 换字体后要让高亮层重建格式。
     if (m_highlighter)
         m_highlighter->refreshAppearance();
 }
 
+void MarkdownEditor::updateViewportMargins()
+{
+    const int width = contentsRect().width();
+    int left = 0;
+    int right = 0;
+
+    if (m_sourceMode) {
+        left = lineNumberAreaWidth();
+    } else if (width > kMaxTextWidth + 120) {
+        // 编辑模式：正文限制在一段舒适宽度里并居中，像一页文档。
+        left = right = (width - kMaxTextWidth) / 2;
+    }
+    setViewportMargins(left, 0, right, 0);
+}
+
 void MarkdownEditor::updateLineNumberAreaWidth(int)
 {
-    setViewportMargins(lineNumberAreaWidth(), 0, 0, 0);
+    updateViewportMargins();
 }
 
 void MarkdownEditor::updateLineNumberArea(const QRect &rect, int dy)
@@ -202,6 +234,29 @@ void MarkdownEditor::applyTheme()
     viewport()->update();
 }
 
+void MarkdownEditor::applyBlockRhythm()
+{
+    if (!document())
+        return;
+
+    QTextBlockFormat format;
+    format.setLineHeight(150, QTextBlockFormat::ProportionalHeight);
+    format.setTopMargin(2);
+    format.setBottomMargin(6);
+
+    const bool wasModified = document()->isModified();
+
+    QTextCursor cursor(document());
+    cursor.beginEditBlock();
+    for (QTextBlock block = document()->firstBlock(); block.isValid(); block = block.next()) {
+        QTextCursor blockCursor(block);
+        blockCursor.setBlockFormat(format);
+    }
+    cursor.endEditBlock();
+
+    document()->setModified(wasModified);
+}
+
 void MarkdownEditor::setSourceMode(bool enabled)
 {
     if (m_sourceMode == enabled)
@@ -211,7 +266,11 @@ void MarkdownEditor::setSourceMode(bool enabled)
     m_activeBlock = textCursor().blockNumber();
     m_highlighter->setActiveBlock(m_activeBlock);
     m_highlighter->setRendered(!enabled);
+    m_lineNumberArea->setVisible(enabled);
 
+    // 字体、居中和标题格式都跟模式绑定，换模式时整套重建。
+    applyEditorFont();
+    updateViewportMargins();
     updateCurrentLineHighlight();
     viewport()->update();
     emit sourceModeChanged(enabled);
@@ -415,9 +474,36 @@ bool MarkdownEditor::enclosingFence(int firstBlockNumber, int lastBlockNumber,
 void MarkdownEditor::resizeEvent(QResizeEvent *event)
 {
     QPlainTextEdit::resizeEvent(event);
+    updateViewportMargins();
     const QRect rect = contentsRect();
     m_lineNumberArea->setGeometry(QRect(rect.left(), rect.top(),
                                         lineNumberAreaWidth(), rect.height()));
+}
+
+void MarkdownEditor::paintEvent(QPaintEvent *event)
+{
+    QPlainTextEdit::paintEvent(event);
+    if (!m_sourceMode)
+        return;
+
+    // 源代码模式：每行底下画一条极细的分隔线，像稿纸一样。
+    QPainter painter(viewport());
+    QColor lineColor = ThemeManager::instance()->colors().border;
+    lineColor.setAlpha(120);
+    painter.setPen(lineColor);
+
+    QTextBlock block = firstVisibleBlock();
+    int top = qRound(blockBoundingGeometry(block).translated(contentOffset()).top());
+    int bottom = top + qRound(blockBoundingRect(block).height());
+    const int width = viewport()->width();
+
+    while (block.isValid() && top <= event->rect().bottom()) {
+        if (block.isVisible() && bottom >= event->rect().top())
+            painter.drawLine(0, bottom - 1, width, bottom - 1);
+        block = block.next();
+        top = bottom;
+        bottom = top + qRound(blockBoundingRect(block).height());
+    }
 }
 
 void MarkdownEditor::keyPressEvent(QKeyEvent *event)

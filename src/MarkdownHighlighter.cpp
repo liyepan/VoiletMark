@@ -9,6 +9,14 @@
 namespace {
 constexpr int StateNormal = 0;
 constexpr int StateInFence = 1;
+
+QStringList monospaceFamilies()
+{
+    return {QStringLiteral("JetBrains Mono"), QStringLiteral("Cascadia Code"),
+            QStringLiteral("Source Han Mono SC"), QStringLiteral("Noto Sans Mono CJK SC"),
+            QStringLiteral("Sarasa Mono SC"), QStringLiteral("Consolas"),
+            QStringLiteral("DejaVu Sans Mono")};
+}
 } // namespace
 
 MarkdownHighlighter::MarkdownHighlighter(QTextDocument *document)
@@ -26,6 +34,8 @@ void MarkdownHighlighter::setRendered(bool rendered)
     if (m_rendered == rendered)
         return;
     m_rendered = rendered;
+    // 源代码模式不放大标题，格式需要按模式重建。
+    rebuildFormats();
     rehighlight();
 }
 
@@ -58,7 +68,9 @@ void MarkdownHighlighter::rebuildFormats()
         m_headingFormats[level] = QTextCharFormat();
         m_headingFormats[level].setForeground(c.heading);
         m_headingFormats[level].setFontWeight(QFont::Bold);
-        m_headingFormats[level].setFontPointSize(base * scales[level]);
+        // 编辑模式按级别放大；源代码模式保持逐行等高，只保留颜色和粗细。
+        if (m_rendered)
+            m_headingFormats[level].setFontPointSize(base * scales[level]);
     }
 
     m_headingMarkerFormat = QTextCharFormat();
@@ -82,6 +94,8 @@ void MarkdownHighlighter::rebuildFormats()
     m_codeFormat.setBackground(c.codeBackground);
     m_codeFormat.setFontWeight(QFont::Normal);
     m_codeFormat.setFontItalic(false);
+    m_codeFormat.setFontFamilies(monospaceFamilies());
+    m_codeFormat.setFontFixedPitch(true);
 
     m_linkFormat = QTextCharFormat();
     m_linkFormat.setForeground(c.link);

@@ -444,6 +444,7 @@ void MainWindow::showWelcomeDocument()
     if (text.startsWith(QLatin1Char('\n')))
         text.remove(0, 1);
     m_editor->setPlainText(text);
+    m_editor->applyBlockRhythm();
     m_editor->document()->setModified(false);
     m_editor->document()->clearUndoRedoStacks();
     setCurrentFile(QString());
@@ -455,6 +456,7 @@ void MainWindow::newFile()
     if (!maybeSave())
         return;
     m_editor->clear();
+    m_editor->applyBlockRhythm();
     m_editor->document()->setModified(false);
     m_editor->document()->clearUndoRedoStacks();
     m_hasBom = false;
@@ -503,6 +505,7 @@ bool MainWindow::openPath(const QString &path)
         text.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
 
     m_editor->setPlainText(text);
+    m_editor->applyBlockRhythm();
     m_editor->document()->setModified(false);
     m_editor->document()->clearUndoRedoStacks();
     setCurrentFile(absolutePath);
