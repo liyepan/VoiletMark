@@ -8,7 +8,22 @@
 
 namespace {
 constexpr int StateNormal = 0;
-constexpr int StateInFence = 1;
+
+// 围栏状态：1 + 语言编号 * 2 + 是否在块注释里。
+int fenceState(int language, bool inComment)
+{
+    return 1 + language * 2 + (inComment ? 1 : 0);
+}
+
+int stateLanguage(int state)
+{
+    return (state - 1) / 2;
+}
+
+bool stateInComment(int state)
+{
+    return (state - 1) % 2 != 0;
+}
 
 QStringList monospaceFamilies()
 {
@@ -103,6 +118,22 @@ void MarkdownHighlighter::rebuildFormats()
     m_fenceFormat.setFontFixedPitch(true);
     m_fenceFormat.setForeground(c.editorText);
 
+    m_fenceMarkerFormat = QTextCharFormat();
+    m_fenceMarkerFormat.setFontFamilies(monospaceFamilies());
+    m_fenceMarkerFormat.setFontFixedPitch(true);
+    m_fenceMarkerFormat.setForeground(c.placeholder);
+
+    auto tokenColor = [](const QColor &color) {
+        QTextCharFormat format;
+        format.setForeground(color);
+        return format;
+    };
+    m_codeKeywordFormat = tokenColor(c.codeKeyword);
+    m_codeStringFormat = tokenColor(c.codeString);
+    m_codeNumberFormat = tokenColor(c.codeNumber);
+    m_codeCommentFormat = tokenColor(c.codeComment);
+    m_codePreprocessorFormat = tokenColor(c.codePreprocessor);
+
     m_linkFormat = QTextCharFormat();
     m_linkFormat.setForeground(c.link);
     m_linkFormat.setFontUnderline(true);
@@ -139,6 +170,24 @@ QTextCharFormat MarkdownHighlighter::compose(const QTextCharFormat &specific) co
     QTextCharFormat result = m_blockBase;
     result.merge(specific);
     return result;
+}
+
+const QTextCharFormat &MarkdownHighlighter::tokenFormat(CodeHighlight::Token token) const
+{
+    switch (token) {
+    case CodeHighlight::Token::Keyword:
+    case CodeHighlight::Token::Type:
+        return m_codeKeywordFormat;
+    case CodeHighlight::Token::String:
+        return m_codeStringFormat;
+    case CodeHighlight::Token::Number:
+        return m_codeNumberFormat;
+    case CodeHighlight::Token::Comment:
+        return m_codeCommentFormat;
+    case CodeHighlight::Token::Preprocessor:
+        return m_codePreprocessorFormat;
+    }
+    return m_codeKeywordFormat;
 }
 
 QTextCharFormat MarkdownHighlighter::hiddenFormat(const QColor &background) const
@@ -187,46 +236,67 @@ void MarkdownHighlighter::applyDelimited(const QRegularExpression &pattern, cons
 
 void MarkdownHighlighter::highlightBlock(const QString &text)
 {
+    const int previousState = previousBlockState();
     setCurrentBlockState(StateNormal);
     m_blockBase = QTextCharFormat();
-    if (text.isEmpty())
+
+    const bool wasInFence = previousState > 0;
+    const int fenceLanguageId = wasInFence ? stateLanguage(previousState) : 0;
+    const auto fenceLanguage = static_cast<CodeHighlight::Language>(fenceLanguageId);
+    const bool fenceComment = wasInFence && stateInComment(previousState);
+
+    if (text.isEmpty()) {
+        // 空行也要把围栏状态传下去，否则代码块会被一条空行截断。
+        if (wasInFence)
+            setCurrentBlockState(fenceState(fenceLanguageId, fenceComment));
         return;
+    }
 
     const ThemeColors &c = ThemeManager::instance()->colors();
     const bool rendered = m_rendered;
     const bool active = isActiveLine();
 
     static const QRegularExpression fencePattern(QStringLiteral("^\\s{0,3}(?:```|~~~)"));
-    const bool inFence = previousBlockState() == StateInFence;
     const bool fenceLine = fencePattern.match(text).hasMatch();
 
     // ---- 围栏代码块 -----------------------------------------------------
-    if (inFence) {
-        if (!fenceLine)
-            setCurrentBlockState(StateInFence);
-        if (rendered) {
-            if (fenceLine && !active) {
-                apply(0, text.length(), hiddenFormat(c.editorBase));
-            } else {
-                m_blockBase = m_fenceFormat;
-                apply(0, text.length(), m_fenceFormat);
-            }
-        } else {
-            m_blockBase = m_codeFormat;
-            apply(0, text.length(), m_codeFormat);
-        }
-        return;
-    }
-    if (fenceLine) {
-        setCurrentBlockState(StateInFence);
-        if (rendered) {
-            if (!active)
+    if (wasInFence) {
+        if (fenceLine) {
+            // 闭合围栏行
+            if (rendered && !active)
                 apply(0, text.length(), hiddenFormat(c.editorBase));
             else
-                apply(0, text.length(), m_fenceFormat);
-        } else {
-            apply(0, text.length(), m_codeFormat);
+                apply(0, text.length(), m_fenceMarkerFormat);
+            return;
         }
+
+        bool inComment = fenceComment;
+        bool endsInComment = inComment;
+        m_blockBase = m_fenceFormat;
+        apply(0, text.length(), m_fenceFormat);
+
+        if (fenceLanguage != CodeHighlight::Language::None) {
+            const QVector<CodeHighlight::Span> spans =
+                CodeHighlight::tokenize(text, fenceLanguage, inComment, &endsInComment);
+            for (const CodeHighlight::Span &span : spans)
+                apply(span.start, span.length, compose(tokenFormat(span.token)));
+        }
+
+        setCurrentBlockState(fenceState(fenceLanguageId, endsInComment));
+        return;
+    }
+
+    if (fenceLine) {
+        // 开围栏行：从 info string 里认语言
+        QString info = text.trimmed();
+        info.remove(QRegularExpression(QStringLiteral("^(?:```|~~~)")));
+        const CodeHighlight::Language language = CodeHighlight::fromInfoString(info);
+        setCurrentBlockState(fenceState(int(language), false));
+
+        if (rendered && !active)
+            apply(0, text.length(), hiddenFormat(c.editorBase));
+        else
+            apply(0, text.length(), m_fenceMarkerFormat);
         return;
     }
 

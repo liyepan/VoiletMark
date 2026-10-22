@@ -1,5 +1,7 @@
 #pragma once
 
+#include "CodeHighlight.h"
+
 #include <QColor>
 #include <QRegularExpression>
 #include <QSyntaxHighlighter>
@@ -42,6 +44,7 @@ private:
                         const QTextCharFormat &contentFormat, int contentGroup,
                         const QColor &hideAgainst);
     QTextCharFormat compose(const QTextCharFormat &specific) const;
+    const QTextCharFormat &tokenFormat(CodeHighlight::Token token) const;
     QTextCharFormat hiddenFormat(const QColor &background) const;
     bool isActiveLine() const;
 
@@ -56,6 +59,12 @@ private:
     QTextCharFormat m_emphasisFormat;
     QTextCharFormat m_codeFormat;
     QTextCharFormat m_fenceFormat;
+    QTextCharFormat m_fenceMarkerFormat;
+    QTextCharFormat m_codeKeywordFormat;
+    QTextCharFormat m_codeStringFormat;
+    QTextCharFormat m_codeNumberFormat;
+    QTextCharFormat m_codeCommentFormat;
+    QTextCharFormat m_codePreprocessorFormat;
     QTextCharFormat m_linkFormat;
     QTextCharFormat m_urlFormat;
     QTextCharFormat m_quoteFormat;

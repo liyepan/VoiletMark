@@ -44,6 +44,11 @@ struct ThemeColors
     QColor emphasis;
     QColor code;
     QColor codeBackground;
+    QColor codeKeyword;
+    QColor codeString;
+    QColor codeNumber;
+    QColor codeComment;
+    QColor codePreprocessor;
     QColor link;
     QColor linkUrl;
     QColor quote;

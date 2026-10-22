@@ -93,6 +93,11 @@ ThemeColors lightColors()
     c.emphasis            = hex("#4b535c");
     c.code                = hex("#b4295a");
     c.codeBackground      = hex("#f2f4f7");
+    c.codeKeyword         = hex("#0550ae");
+    c.codeString          = hex("#0a7d3a");
+    c.codeNumber          = hex("#953800");
+    c.codeComment         = hex("#6e7781");
+    c.codePreprocessor    = hex("#8250df");
     c.link                = hex("#0969da");
     c.linkUrl             = hex("#6b7480");
     c.quote               = hex("#6b7480");
@@ -138,6 +143,11 @@ ThemeColors darkColors()
     c.emphasis            = hex("#c3c9d1");
     c.code                = hex("#ff8fbf");
     c.codeBackground      = hex("#292c33");
+    c.codeKeyword         = hex("#79b8ff");
+    c.codeString          = hex("#7ee787");
+    c.codeNumber          = hex("#ffab70");
+    c.codeComment         = hex("#8b949e");
+    c.codePreprocessor    = hex("#d2a8ff");
     c.link                = hex("#62a8ff");
     c.linkUrl             = hex("#7f8791");
     c.quote               = hex("#8b939d");
