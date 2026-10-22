@@ -2,7 +2,7 @@
 
 一个轻量的跨平台 Markdown 编辑器，基于 **Qt 5 / C++17** 构建。
 
-当前版本 **0.4.0**。
+当前版本 **0.5.0**。
 
 ## 界面
 
@@ -13,6 +13,10 @@
 源代码模式：等宽字体、行号、每行一条细线。
 
 ![源代码模式](docs/screenshot-source.png)
+
+导出 PDF 前先给一个预览窗口，确认无误再选路径保存：
+
+![导出 PDF](docs/screenshot-export.png)
 
 ## 功能
 
@@ -55,6 +59,16 @@
 - 适合核对格式、对齐、复制纯文本
 
 按钮在源码模式下会变成 `</src>`。
+
+### 导出 PDF
+
+**文件 → 导出 PDF…**（`Ctrl+E`）会先弹出预览窗口，里面就是最终排版；
+点「保存 PDF…」选个位置即可。A4 纸、16mm 页边距，预览和导出用的是同一份
+排版文档，所见即所得。
+
+导出用的是 Qt 自带的 `QPrinter` + `QTextDocument`，不需要额外的 PDF 库。
+支持标题、列表（含任务列表）、引用、代码块、行内代码、粗体 / 斜体 / 删除线、
+链接；图片只输出 alt 文字，表格暂时按原文输出。
 
 ### 文件
 
@@ -152,6 +166,7 @@ VoiletMark --screenshot a.png  # 渲染窗口截图后退出（调试 / 视觉�
 | `Ctrl+N` / `Ctrl+O` / `Ctrl+S` | 新建 / 打开 / 保存 |
 | `Ctrl+Shift+S` | 另存为 |
 | `Ctrl+Shift+O` | 打开文件夹 |
+| `Ctrl+E` | 导出 PDF（先预览） |
 | `Ctrl+B` | 显示 / 隐藏侧栏 |
 | `Ctrl+Shift+M` | 源代码模式 |
 | `Ctrl+1` ~ `Ctrl+6` | 设为 1–6 级标题（再按取消） |
@@ -170,7 +185,9 @@ src/
 ├── ThemeManager.{h,cpp}   四种主题模式 + 系统检测 + 调色板 / QSS 生成
 ├── MainWindow.{h,cpp}     菜单、文件读写、文件夹侧栏、状态栏、设置
 ├── MarkdownEditor.{h,cpp} 编辑器控件：行号、缩进、标题 / 代码块命令、源码模式
-└── MarkdownHighlighter.{h,cpp}  Markdown 着色与就地渲染（隐藏标记、标题缩放）
+├── MarkdownHighlighter.{h,cpp}  Markdown 着色与就地渲染（隐藏标记、标题缩放）
+├── MarkdownRenderer.{h,cpp}     导出用的 Markdown → 富文本文档转换
+└── ExportDialog.{h,cpp}         PDF 预览与保存对话框
 
 logo.png              图标源文件
 resources.qrc         窗口图标资源

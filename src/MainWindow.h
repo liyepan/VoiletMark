@@ -56,6 +56,7 @@ private:
     void selectInSidebar(const QString &path);
     QStringList scanFolder() const;
     void setSourceModeEnabled(bool enabled);
+    void exportPdf();
 
     void changeZoom(int direction);
     void resetZoom();
@@ -92,6 +93,7 @@ private:
     QAction *m_openAction = nullptr;
     QAction *m_saveAction = nullptr;
     QAction *m_saveAsAction = nullptr;
+    QAction *m_exportPdfAction = nullptr;
     QAction *m_quitAction = nullptr;
 
     QAction *m_undoAction = nullptr;

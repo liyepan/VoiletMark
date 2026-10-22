@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 
+#include "ExportDialog.h"
 #include "MarkdownEditor.h"
 #include "ThemeManager.h"
 
@@ -132,6 +133,10 @@ void MainWindow::createActions()
     m_saveAsAction = new QAction(tr("另存为…"), this);
     m_saveAsAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+S")));
     connect(m_saveAsAction, &QAction::triggered, this, [this] { saveFileAs(); });
+
+    m_exportPdfAction = new QAction(tr("导出 PDF…"), this);
+    m_exportPdfAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+E")));
+    connect(m_exportPdfAction, &QAction::triggered, this, &MainWindow::exportPdf);
 
     m_quitAction = new QAction(tr("退出"), this);
     m_quitAction->setShortcut(QKeySequence::Quit);
@@ -269,6 +274,7 @@ void MainWindow::createMenus()
     fileMenu->addSeparator();
     fileMenu->addAction(m_saveAction);
     fileMenu->addAction(m_saveAsAction);
+    fileMenu->addAction(m_exportPdfAction);
     fileMenu->addSeparator();
     fileMenu->addAction(m_quitAction);
 
@@ -534,6 +540,12 @@ bool MainWindow::saveFileAs()
         path += QStringLiteral(".md");
 
     return writeToFile(path);
+}
+
+void MainWindow::exportPdf()
+{
+    ExportDialog dialog(m_editor->toPlainText(), displayName(), startDirectory(), this);
+    dialog.exec();
 }
 
 bool MainWindow::writeToFile(const QString &path)

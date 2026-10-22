@@ -1,8 +1,8 @@
 TEMPLATE = app
 TARGET   = VoiletMark
-VERSION  = 0.4.0
+VERSION  = 0.5.0
 
-QT += core gui widgets
+QT += core gui widgets printsupport
 
 CONFIG += c++17 warn_on
 
@@ -22,12 +22,16 @@ SOURCES += \
     src/MainWindow.cpp \
     src/MarkdownEditor.cpp \
     src/MarkdownHighlighter.cpp \
+    src/MarkdownRenderer.cpp \
+    src/ExportDialog.cpp \
     src/ThemeManager.cpp
 
 HEADERS += \
     src/MainWindow.h \
     src/MarkdownEditor.h \
     src/MarkdownHighlighter.h \
+    src/MarkdownRenderer.h \
+    src/ExportDialog.h \
     src/ThemeManager.h
 
 # Linux 桌面集成：make install 之后能在应用菜单里找到
