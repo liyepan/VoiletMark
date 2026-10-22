@@ -103,6 +103,28 @@ make -j"$(nproc)"
 脚本会依次查找 `command -v qmake`、`$QT_PREFIX/bin/qmake`、
 `$HOME/Qt5/5.15.2/gcc_64/bin/qmake`；也可以用 `QMAKE=/path/to/qmake` 直接指定。
 
+## 安装（Linux）
+
+```bash
+make -C build install                       # 默认装到 /usr/local
+make -C build install INSTALL_ROOT=/tmp/pkg # 打包用，装到 /tmp/pkg/usr/local
+```
+
+会一起装上可执行文件、`voiletmark.desktop` 和 256×256 图标，
+装完就能在应用菜单里搜到 VoiletMark。
+
+## 图标
+
+`logo.png` 是源文件，`packaging/` 里是从它生成的各平台图标：
+
+| 文件 | 平台 |
+| --- | --- |
+| `voiletmark.ico` | Windows 可执行文件图标（`RC_ICONS`） |
+| `voiletmark.icns` | macOS 应用包图标（`ICON`） |
+| `voiletmark.png` | Linux 桌面图标（hicolor 256×256） |
+
+运行时的窗口图标直接嵌在资源里（`resources.qrc`），所以不安装也有图标。
+
 ## 命令行
 
 ```bash
@@ -137,7 +159,11 @@ src/
 ├── ThemeManager.{h,cpp}   四种主题模式 + 系统检测 + 调色板 / QSS 生成
 ├── MainWindow.{h,cpp}     菜单、文件读写、文件夹侧栏、状态栏、设置
 ├── MarkdownEditor.{h,cpp} 编辑器控件：行号、缩进、标题 / 代码块命令、源码模式
-└── MarkdownHighlighter.{h,cpp}  Markdown 语法着色（含围栏代码块状态机）
+└── MarkdownHighlighter.{h,cpp}  Markdown 着色与就地渲染（隐藏标记、标题缩放）
+
+logo.png              图标源文件
+resources.qrc         窗口图标资源
+packaging/            各平台图标（ico / icns / png）与 .desktop
 ```
 
 ## 下一版计划

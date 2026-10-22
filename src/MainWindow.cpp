@@ -20,6 +20,7 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QPixmap>
 #include <QSaveFile>
 #include <QSettings>
 #include <QSignalBlocker>
@@ -653,12 +654,18 @@ void MainWindow::applyThemeMode(int mode)
 
 void MainWindow::showAbout()
 {
-    QMessageBox::about(
-        this, tr("关于 VoiletMark"),
-        tr("<h3>VoiletMark %1</h3>"
-           "<p>一个轻量的跨平台 Markdown 编辑器。</p>"
-           "<p>基于 Qt %2 与 C++17 构建，界面会跟随系统自动切换浅色 / 深色主题。</p>")
-            .arg(QCoreApplication::applicationVersion(), QString::fromLatin1(qVersion())));
+    QMessageBox box(this);
+    box.setWindowTitle(tr("关于 VoiletMark"));
+    box.setIconPixmap(QPixmap(QStringLiteral(":/logo.png"))
+                          .scaled(72, 72, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    box.setTextFormat(Qt::RichText);
+    box.setText(tr("<h3>VoiletMark %1</h3>"
+                   "<p>一个轻量的跨平台 Markdown 编辑器。</p>"
+                   "<p>基于 Qt %2 与 C++17 构建。</p>")
+                    .arg(QCoreApplication::applicationVersion(),
+                         QString::fromLatin1(qVersion())));
+    box.setStandardButtons(QMessageBox::Ok);
+    box.exec();
 }
 
 void MainWindow::addRecentFile(const QString &path)

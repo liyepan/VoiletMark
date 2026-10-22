@@ -1,6 +1,6 @@
 TEMPLATE = app
 TARGET   = VoiletMark
-VERSION  = 0.3.0
+VERSION  = 0.3.1
 
 QT += core gui widgets
 
@@ -12,6 +12,10 @@ DEFINES += VM_VERSION=\\\"$$VERSION\\\"
 INCLUDEPATH += $$PWD/src
 
 RESOURCES += resources.qrc
+
+# 各平台的可执行文件图标
+win32: RC_ICONS = packaging/voiletmark.ico
+macx:  ICON = packaging/voiletmark.icns
 
 SOURCES += \
     src/main.cpp \
@@ -25,3 +29,13 @@ HEADERS += \
     src/MarkdownEditor.h \
     src/MarkdownHighlighter.h \
     src/ThemeManager.h
+
+# Linux 桌面集成：make install 之后能在应用菜单里找到
+isEmpty(PREFIX): PREFIX = /usr/local
+
+target.path = $$PREFIX/bin
+desktop.files = packaging/voiletmark.desktop
+desktop.path = $$PREFIX/share/applications
+icon.files = packaging/voiletmark.png
+icon.path = $$PREFIX/share/icons/hicolor/256x256/apps
+INSTALLS += target desktop icon

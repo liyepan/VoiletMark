@@ -1,0 +1,17 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=VoiletMark
+GenericName=Markdown Editor
+GenericName[zh_CN]=Markdown 编辑器
+Comment=Lightweight cross-platform Markdown editor
+Comment[zh_CN]=轻量的跨平台 Markdown 编辑器
+Exec=VoiletMark %F
+Icon=voiletmark
+Terminal=false
+Categories=Utility;TextEditor;Office;
+Keywords=markdown;editor;notes;
+Keywords[zh_CN]=markdown;编辑器;笔记;
+MimeType=text/markdown;
+StartupNotify=true
+StartupWMClass=VoiletMark
