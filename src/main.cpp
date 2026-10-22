@@ -1,3 +1,4 @@
+#include "LanguageManager.h"
 #include "MainWindow.h"
 #include "ThemeManager.h"
 
@@ -51,6 +52,7 @@ int main(int argc, char *argv[])
             mode = ThemeManager::Mode::System;
     }
     ThemeManager::instance()->initialize(mode, false);
+    LanguageManager::instance()->initialize();
 
     MainWindow window;
     window.show();

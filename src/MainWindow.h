@@ -62,6 +62,8 @@ private:
     void resetZoom();
     void setWordWrapEnabled(bool enabled);
     void applyThemeMode(int mode);
+    void applyLanguage(const QString &code);
+    void retranslateUi();
     void showAbout();
 
     void updateStatusBar();
@@ -120,4 +122,18 @@ private:
     QAction *m_headingActions[6] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
 
     QMenu *m_recentMenu = nullptr;
+    QMenu *m_fileMenu = nullptr;
+    QMenu *m_editMenu = nullptr;
+    QMenu *m_viewMenu = nullptr;
+    QMenu *m_formatMenu = nullptr;
+    QMenu *m_helpMenu = nullptr;
+    QMenu *m_themeMenu = nullptr;
+    QMenu *m_headingMenu = nullptr;
+    QMenu *m_languageMenu = nullptr;
+
+    QAction *m_aboutAction = nullptr;
+    QAction *m_languageChineseAction = nullptr;
+    QAction *m_languageEnglishAction = nullptr;
+
+    QString m_welcomeText;
 };

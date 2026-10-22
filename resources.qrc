@@ -1,5 +1,7 @@
 <RCC>
     <qresource prefix="/">
         <file>packaging/voiletmark.png</file>
+        <file>translations/voiletmark_en.qm</file>
+        <file>translations/qtbase_zh_CN.qm</file>
     </qresource>
 </RCC>

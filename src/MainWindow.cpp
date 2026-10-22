@@ -1,7 +1,8 @@
 #include "MainWindow.h"
 
-#include "ExportDialog.h"
+#include "LanguageManager.h"
 #include "MarkdownEditor.h"
+#include "MarkdownRenderer.h"
 #include "ThemeManager.h"
 
 #include <QAction>
@@ -21,7 +22,10 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QPageLayout>
+#include <QPageSize>
 #include <QPixmap>
+#include <QPrinter>
 #include <QSaveFile>
 #include <QSettings>
 #include <QSignalBlocker>
@@ -83,6 +87,49 @@ int main()
 ---
 )VOILETMARK";
 
+const char kWelcomeTextEn[] = R"VOILETMARK(
+# Welcome to VoiletMark
+
+A lightweight cross-platform Markdown editor built with **Qt 5** and C++.
+
+## Quick start
+
+- `Ctrl+O` opens a file, `Ctrl+S` saves, `Ctrl+Shift+S` saves as
+- Drag a Markdown file into the window to open it
+- `Ctrl+1` – `Ctrl+6` set heading levels, `Ctrl+/` wraps a code block
+- `Ctrl+E` exports the document to PDF (A4)
+
+## Modes
+
+The default view is the editor: Markdown markers are hidden, headings are sized,
+and the line under the cursor reveals its raw markers.
+Click `<src>` in the status bar to see the source with line numbers.
+
+## Theme
+
+Follows the system light / dark setting by default;
+switch it under **View → Theme**.
+
+> Quotes, lists, `inline code`, **bold**, *italic*, ~~strikethrough~~
+> and [links](https://example.com) all render in place.
+
+- [x] Syntax highlighting
+- [x] Folder sidebar
+- [x] PDF export
+
+```cpp
+#include <cstdio>
+
+int main()
+{
+    std::printf("Hello, VoiletMark!\n");
+    return 0;
+}
+```
+
+---
+)VOILETMARK";
+
 } // namespace
 
 MainWindow::MainWindow(QWidget *parent)
@@ -109,6 +156,8 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::changeZoom);
     connect(m_editor, &MarkdownEditor::fileDropped,
             this, &MainWindow::openPath);
+    connect(LanguageManager::instance(), &LanguageManager::languageChanged,
+            this, &MainWindow::retranslateUi);
 
     showWelcomeDocument();
     updateEditActionStates();
@@ -266,40 +315,40 @@ void MainWindow::createSidebar()
 
 void MainWindow::createMenus()
 {
-    QMenu *fileMenu = menuBar()->addMenu(tr("文件"));
-    fileMenu->addAction(m_newAction);
-    fileMenu->addAction(m_openAction);
-    fileMenu->addAction(m_openFolderAction);
-    m_recentMenu = fileMenu->addMenu(tr("最近打开"));
-    fileMenu->addSeparator();
-    fileMenu->addAction(m_saveAction);
-    fileMenu->addAction(m_saveAsAction);
-    fileMenu->addAction(m_exportPdfAction);
-    fileMenu->addSeparator();
-    fileMenu->addAction(m_quitAction);
+    m_fileMenu = menuBar()->addMenu(tr("文件"));
+    m_fileMenu->addAction(m_newAction);
+    m_fileMenu->addAction(m_openAction);
+    m_fileMenu->addAction(m_openFolderAction);
+    m_recentMenu = m_fileMenu->addMenu(tr("最近打开"));
+    m_fileMenu->addSeparator();
+    m_fileMenu->addAction(m_saveAction);
+    m_fileMenu->addAction(m_saveAsAction);
+    m_fileMenu->addAction(m_exportPdfAction);
+    m_fileMenu->addSeparator();
+    m_fileMenu->addAction(m_quitAction);
 
-    QMenu *editMenu = menuBar()->addMenu(tr("编辑"));
-    editMenu->addAction(m_undoAction);
-    editMenu->addAction(m_redoAction);
-    editMenu->addSeparator();
-    editMenu->addAction(m_cutAction);
-    editMenu->addAction(m_copyAction);
-    editMenu->addAction(m_pasteAction);
-    editMenu->addSeparator();
-    editMenu->addAction(m_selectAllAction);
+    m_editMenu = menuBar()->addMenu(tr("编辑"));
+    m_editMenu->addAction(m_undoAction);
+    m_editMenu->addAction(m_redoAction);
+    m_editMenu->addSeparator();
+    m_editMenu->addAction(m_cutAction);
+    m_editMenu->addAction(m_copyAction);
+    m_editMenu->addAction(m_pasteAction);
+    m_editMenu->addSeparator();
+    m_editMenu->addAction(m_selectAllAction);
 
-    QMenu *viewMenu = menuBar()->addMenu(tr("视图"));
-    viewMenu->addAction(m_sidebarAction);
-    viewMenu->addAction(m_sourceModeAction);
-    viewMenu->addSeparator();
-    viewMenu->addAction(m_wrapAction);
-    viewMenu->addSeparator();
-    viewMenu->addAction(m_zoomInAction);
-    viewMenu->addAction(m_zoomOutAction);
-    viewMenu->addAction(m_zoomResetAction);
-    viewMenu->addSeparator();
+    m_viewMenu = menuBar()->addMenu(tr("视图"));
+    m_viewMenu->addAction(m_sidebarAction);
+    m_viewMenu->addAction(m_sourceModeAction);
+    m_viewMenu->addSeparator();
+    m_viewMenu->addAction(m_wrapAction);
+    m_viewMenu->addSeparator();
+    m_viewMenu->addAction(m_zoomInAction);
+    m_viewMenu->addAction(m_zoomOutAction);
+    m_viewMenu->addAction(m_zoomResetAction);
+    m_viewMenu->addSeparator();
 
-    QMenu *themeMenu = viewMenu->addMenu(tr("主题"));
+    m_themeMenu = m_viewMenu->addMenu(tr("主题"));
     QActionGroup *themeGroup = new QActionGroup(this);
     themeGroup->setExclusive(true);
 
@@ -312,7 +361,7 @@ void MainWindow::createMenus()
                             m_themeScheduleAction}) {
         action->setCheckable(true);
         themeGroup->addAction(action);
-        themeMenu->addAction(action);
+        m_themeMenu->addAction(action);
     }
     m_themeSystemAction->setChecked(true);
 
@@ -325,16 +374,33 @@ void MainWindow::createMenus()
     connect(m_themeScheduleAction, &QAction::triggered, this,
             [this] { applyThemeMode(static_cast<int>(ThemeManager::Mode::Schedule)); });
 
-    QMenu *formatMenu = menuBar()->addMenu(tr("格式"));
-    QMenu *headingMenu = formatMenu->addMenu(tr("标题"));
+    m_languageMenu = m_viewMenu->addMenu(tr("语言"));
+    QActionGroup *languageGroup = new QActionGroup(this);
+    languageGroup->setExclusive(true);
+    m_languageChineseAction =
+        new QAction(LanguageManager::displayName(QStringLiteral("zh_CN")), this);
+    m_languageEnglishAction =
+        new QAction(LanguageManager::displayName(QStringLiteral("en")), this);
+    for (QAction *action : {m_languageChineseAction, m_languageEnglishAction}) {
+        action->setCheckable(true);
+        languageGroup->addAction(action);
+        m_languageMenu->addAction(action);
+    }
+    connect(m_languageChineseAction, &QAction::triggered, this,
+            [this] { applyLanguage(QStringLiteral("zh_CN")); });
+    connect(m_languageEnglishAction, &QAction::triggered, this,
+            [this] { applyLanguage(QStringLiteral("en")); });
+
+    m_formatMenu = menuBar()->addMenu(tr("格式"));
+    m_headingMenu = m_formatMenu->addMenu(tr("标题"));
     for (QAction *headingAction : m_headingActions) {
         if (headingAction)
-            headingMenu->addAction(headingAction);
+            m_headingMenu->addAction(headingAction);
     }
-    formatMenu->addAction(m_codeBlockAction);
+    m_formatMenu->addAction(m_codeBlockAction);
 
-    QMenu *helpMenu = menuBar()->addMenu(tr("帮助"));
-    helpMenu->addAction(tr("关于 VoiletMark"), this, &MainWindow::showAbout);
+    m_helpMenu = menuBar()->addMenu(tr("帮助"));
+    m_aboutAction = m_helpMenu->addAction(tr("关于 VoiletMark"), this, &MainWindow::showAbout);
 }
 
 void MainWindow::createStatusBar()
@@ -446,9 +512,11 @@ QString MainWindow::startDirectory() const
 
 void MainWindow::showWelcomeDocument()
 {
-    QString text = QString::fromUtf8(kWelcomeText);
+    const bool english = LanguageManager::instance()->language() == QLatin1String("en");
+    QString text = QString::fromUtf8(english ? kWelcomeTextEn : kWelcomeText);
     if (text.startsWith(QLatin1Char('\n')))
         text.remove(0, 1);
+    m_welcomeText = text;
     m_editor->setPlainText(text);
     m_editor->applyBlockRhythm();
     m_editor->document()->setModified(false);
@@ -544,8 +612,37 @@ bool MainWindow::saveFileAs()
 
 void MainWindow::exportPdf()
 {
-    ExportDialog dialog(m_editor->toPlainText(), displayName(), startDirectory(), this);
-    dialog.exec();
+    QString suggested = m_currentPath.isEmpty() ? tr("未命名")
+                                                : QFileInfo(m_currentPath).completeBaseName();
+    suggested += QStringLiteral(".pdf");
+
+    QString target = QFileDialog::getSaveFileName(
+        this, tr("导出 PDF"), QDir(startDirectory()).filePath(suggested),
+        tr("PDF 文件 (*.pdf)"));
+    if (target.isEmpty())
+        return;
+    if (!target.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive))
+        target += QStringLiteral(".pdf");
+
+    QTextDocument document;
+    MarkdownRenderer::render(m_editor->toPlainText(), &document);
+    document.setPageSize(QSizeF(672.76, 1001.57));
+
+    QPrinter printer(QPrinter::HighResolution);
+    printer.setOutputFormat(QPrinter::PdfFormat);
+    printer.setOutputFileName(target);
+    printer.setPageSize(QPageSize(QPageSize::A4));
+    printer.setPageMargins(QMarginsF(16, 16, 16, 16), QPageLayout::Millimeter);
+    printer.setDocName(QFileInfo(target).completeBaseName());
+    document.print(&printer);
+
+    if (!QFileInfo::exists(target) || QFileInfo(target).size() <= 0) {
+        QMessageBox::warning(this, tr("导出失败"),
+                             tr("没能写出「%1」，换个位置再试一次。")
+                                 .arg(QDir::toNativeSeparators(target)));
+        return;
+    }
+    statusBar()->showMessage(tr("已导出 %1").arg(QDir::toNativeSeparators(target)), 4000);
 }
 
 bool MainWindow::writeToFile(const QString &path)
@@ -665,6 +762,83 @@ void MainWindow::setWordWrapEnabled(bool enabled)
 void MainWindow::applyThemeMode(int mode)
 {
     ThemeManager::instance()->setMode(static_cast<ThemeManager::Mode>(mode), true);
+}
+
+void MainWindow::applyLanguage(const QString &code)
+{
+    LanguageManager::instance()->setLanguage(code);
+}
+
+void MainWindow::retranslateUi()
+{
+    m_fileMenu->setTitle(tr("文件"));
+    m_editMenu->setTitle(tr("编辑"));
+    m_viewMenu->setTitle(tr("视图"));
+    m_formatMenu->setTitle(tr("格式"));
+    m_helpMenu->setTitle(tr("帮助"));
+    m_recentMenu->setTitle(tr("最近打开"));
+    m_themeMenu->setTitle(tr("主题"));
+    m_headingMenu->setTitle(tr("标题"));
+    m_languageMenu->setTitle(tr("语言"));
+
+    m_newAction->setText(tr("新建"));
+    m_openAction->setText(tr("打开…"));
+    m_openFolderAction->setText(tr("打开文件夹…"));
+    m_saveAction->setText(tr("保存"));
+    m_saveAsAction->setText(tr("另存为…"));
+    m_exportPdfAction->setText(tr("导出 PDF…"));
+    m_quitAction->setText(tr("退出"));
+
+    m_undoAction->setText(tr("撤销"));
+    m_redoAction->setText(tr("重做"));
+    m_cutAction->setText(tr("剪切"));
+    m_copyAction->setText(tr("复制"));
+    m_pasteAction->setText(tr("粘贴"));
+    m_selectAllAction->setText(tr("全选"));
+
+    m_sidebarAction->setText(tr("侧栏"));
+    m_sourceModeAction->setText(tr("源代码模式"));
+    m_wrapAction->setText(tr("自动换行"));
+    m_zoomInAction->setText(tr("放大"));
+    m_zoomOutAction->setText(tr("缩小"));
+    m_zoomResetAction->setText(tr("实际大小"));
+
+    m_themeSystemAction->setText(ThemeManager::modeLabel(ThemeManager::Mode::System));
+    m_themeLightAction->setText(ThemeManager::modeLabel(ThemeManager::Mode::Light));
+    m_themeDarkAction->setText(ThemeManager::modeLabel(ThemeManager::Mode::Dark));
+    m_themeScheduleAction->setText(ThemeManager::modeLabel(ThemeManager::Mode::Schedule));
+    m_themeScheduleAction->setToolTip(tr("6:00–18:00 使用浅色，其余时间使用深色"));
+
+    for (int level = 1; level <= 6; ++level) {
+        if (m_headingActions[level - 1])
+            m_headingActions[level - 1]->setText(tr("标题 %1").arg(level));
+    }
+    m_codeBlockAction->setText(tr("代码块"));
+    m_aboutAction->setText(tr("关于 VoiletMark"));
+
+    if (m_sidebarButton) {
+        m_sidebarButton->setText(tr("侧栏"));
+        m_sidebarButton->setToolTip(tr("显示 / 隐藏文件夹侧栏（Ctrl+B）"));
+    }
+    if (m_sourceButton)
+        m_sourceButton->setToolTip(tr("源代码模式：关闭语法高亮与行号（Ctrl+Shift+M）"));
+
+    const QString language = LanguageManager::instance()->language();
+    m_languageChineseAction->setChecked(language == QLatin1String("zh_CN"));
+    m_languageEnglishAction->setChecked(language == QLatin1String("en"));
+
+    // 侧栏、最近打开、欢迎文档都跟着换
+    m_displayedFolder.clear();
+    refreshRecentMenu();
+    refreshFolder();
+
+    if (m_currentPath.isEmpty() && !m_editor->document()->isModified()
+        && m_editor->toPlainText() == m_welcomeText) {
+        showWelcomeDocument();
+    }
+
+    updateWindowTitle();
+    updateStatusBar();
 }
 
 void MainWindow::showAbout()
