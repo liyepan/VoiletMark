@@ -182,7 +182,7 @@
     <message>
         <location filename="../src/MainWindow.cpp" line="333" />
         <location filename="../src/MainWindow.cpp" line="1231" />
-        <location filename="../src/MainWindow.cpp" line="1333" />
+        <location filename="../src/MainWindow.cpp" line="1339" />
         <source>推送</source>
         <translation>Push</translation>
     </message>
@@ -207,7 +207,7 @@
         <location filename="../src/MainWindow.cpp" line="1251" />
         <location filename="../src/MainWindow.cpp" line="1258" />
         <location filename="../src/MainWindow.cpp" line="1262" />
-        <location filename="../src/MainWindow.cpp" line="1332" />
+        <location filename="../src/MainWindow.cpp" line="1338" />
         <source>提交</source>
         <translation>Commit</translation>
     </message>
@@ -484,68 +484,99 @@
     </message>
     <message>
         <location filename="../src/MainWindow.cpp" line="1270" />
-        <location filename="../src/MainWindow.cpp" line="1350" />
         <source>添加到提交</source>
         <translation>Add to commit</translation>
     </message>
     <message>
-        <location filename="../src/MainWindow.cpp" line="1280" />
+        <location filename="../src/MainWindow.cpp" line="1289" />
+        <source>「%1」已经在 .gitignore 里了</source>
+        <translation>"%1" is already in .gitignore</translation>
+    </message>
+    <message>
+        <location filename="../src/MainWindow.cpp" line="1295" />
         <source>忽略文件</source>
         <translation>Ignore File</translation>
     </message>
     <message>
-        <location filename="../src/MainWindow.cpp" line="1281" />
-        <source>忽略「%1」？
-
-会依次执行：
-1. 把路径写进 .gitignore
-2. git rm --cached（从仓库移除，本地文件保留）
-3. 提交并推送到远端——远端也会删掉这个文件
-
-其他人 pull 之后，本地的那份也会被删掉。</source>
-        <translation>Ignore "%1"?
-
-This will:
-1. Add the path to .gitignore
-2. Run git rm --cached (removes it from the repo, keeps your local file)
-3. Commit and push - the file is deleted on the remote too
-
-Anyone who pulls afterwards will lose their local copy.</translation>
+        <location filename="../src/MainWindow.cpp" line="1296" />
+        <source>打不开 .gitignore：%1</source>
+        <translation>Cannot open .gitignore: %1</translation>
     </message>
     <message>
-        <location filename="../src/MainWindow.cpp" line="1289" />
-        <source>忽略并删除远端</source>
-        <translation>Ignore and delete remote</translation>
+        <location filename="../src/MainWindow.cpp" line="1303" />
+        <source>已把 %1 写进 .gitignore</source>
+        <translation>Added %1 to .gitignore</translation>
     </message>
     <message>
-        <location filename="../src/MainWindow.cpp" line="1290" />
+        <location filename="../src/MainWindow.cpp" line="1318" />
+        <location filename="../src/MainWindow.cpp" line="1323" />
+        <location filename="../src/MainWindow.cpp" line="1361" />
+        <source>删除远端</source>
+        <translation>Delete from remote</translation>
+    </message>
+    <message>
+        <location filename="../src/MainWindow.cpp" line="1319" />
+        <source>「%1」没有被 git 跟踪，远端本来就没有它。</source>
+        <translation>"%1" is not tracked by git, so the remote never had it.</translation>
+    </message>
+    <message>
+        <location filename="../src/MainWindow.cpp" line="1324" />
+        <source>从仓库删除「%1」并推送到远端？
+
+本地文件会保留，远端和别人 pull 下来的仓库里会删掉它。</source>
+        <translation>Remove "%1" from the repository and push?
+
+Your local file is kept, but the remote copy and everyone else's will be deleted.</translation>
+    </message>
+    <message>
+        <location filename="../src/MainWindow.cpp" line="1328" />
+        <source>删除并推送</source>
+        <translation>Delete and push</translation>
+    </message>
+    <message>
+        <location filename="../src/MainWindow.cpp" line="1337" />
+        <source>chore: 从仓库删除 %1</source>
+        <translation>chore: remove %1 from repository</translation>
+    </message>
+    <message>
+        <location filename="../src/MainWindow.cpp" line="1356" />
+        <source>添加</source>
+        <translation>Add</translation>
+    </message>
+    <message>
+        <location filename="../src/MainWindow.cpp" line="1357" />
+        <source>git add 这个文件</source>
+        <translation>git add this file</translation>
+    </message>
+    <message>
+        <location filename="../src/MainWindow.cpp" line="1358" />
+        <source>忽略</source>
+        <translation>Ignore</translation>
+    </message>
+    <message>
+        <location filename="../src/MainWindow.cpp" line="1359" />
+        <source>把路径写进 .gitignore（不改仓库里已跟踪的文件）</source>
+        <translation>Add the path to .gitignore (does not untrack files already in the repo)</translation>
+    </message>
+    <message>
+        <location filename="../src/MainWindow.cpp" line="1362" />
+        <source>git rm --cached 后提交并推送：远端删除，本地保留</source>
+        <translation>git rm --cached, then commit and push: gone from the remote, kept locally</translation>
+    </message>
+    <message>
+        <location filename="../src/MainWindow.cpp" line="1329" />
         <source>取消</source>
         <translation>Cancel</translation>
     </message>
     <message>
-        <location filename="../src/MainWindow.cpp" line="1327" />
+        <location filename="../src/MainWindow.cpp" line="1335" />
         <source>从仓库移除</source>
         <translation>Remove from repository</translation>
     </message>
     <message>
-        <location filename="../src/MainWindow.cpp" line="1329" />
-        <source>更新忽略列表</source>
-        <translation>Update ignore list</translation>
-    </message>
-    <message>
-        <location filename="../src/MainWindow.cpp" line="1331" />
-        <source>chore: 忽略 %1</source>
-        <translation>chore: ignore %1</translation>
-    </message>
-    <message>
-        <location filename="../src/MainWindow.cpp" line="1346" />
+        <location filename="../src/MainWindow.cpp" line="1352" />
         <source>打开</source>
         <translation>Open</translation>
-    </message>
-    <message>
-        <location filename="../src/MainWindow.cpp" line="1351" />
-        <source>忽略（并从远端删除）</source>
-        <translation>Ignore (and delete from remote)</translation>
     </message>
 </context>
 <context>

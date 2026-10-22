@@ -66,6 +66,7 @@ private:
     void showFileContextMenu(const QPoint &pos);
     void gitAddFile(const QString &path);
     void gitIgnoreFile(const QString &path);
+    void gitRemoveRemote(const QString &path);
     void gitCommit();
     void gitPull();
     void gitFetch();

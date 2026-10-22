@@ -1276,59 +1276,65 @@ void MainWindow::gitIgnoreFile(const QString &path)
         return;
 
     const QString relative = QDir(m_gitRoot).relativeFilePath(path);
-
-    QMessageBox box(QMessageBox::Warning, tr("忽略文件"),
-                    tr("忽略「%1」？\n\n"
-                       "会依次执行：\n"
-                       "1. 把路径写进 .gitignore\n"
-                       "2. git rm --cached（从仓库移除，本地文件保留）\n"
-                       "3. 提交并推送到远端——远端也会删掉这个文件\n\n"
-                       "其他人 pull 之后，本地的那份也会被删掉。")
-                        .arg(relative),
-                    QMessageBox::NoButton, this);
-    QPushButton *confirm = box.addButton(tr("忽略并删除远端"), QMessageBox::AcceptRole);
-    box.addButton(tr("取消"), QMessageBox::RejectRole);
-    box.exec();
-    if (box.clickedButton() != confirm)
-        return;
-
     const QString ignorePath = QDir(m_gitRoot).filePath(QStringLiteral(".gitignore"));
+
     QStringList lines;
     QFile ignoreFile(ignorePath);
     if (ignoreFile.open(QIODevice::ReadOnly | QIODevice::Text))
         lines = QString::fromUtf8(ignoreFile.readAll()).split(QLatin1Char('\n'));
     ignoreFile.close();
 
-    bool listed = false;
     for (const QString &line : lines) {
         if (line.trimmed() == relative) {
-            listed = true;
-            break;
-        }
-    }
-    if (!listed) {
-        if (ignoreFile.open(QIODevice::Append | QIODevice::Text)) {
-            QTextStream stream(&ignoreFile);
-            stream << relative << "\n";
-            ignoreFile.close();
+            statusBar()->showMessage(tr("「%1」已经在 .gitignore 里了").arg(relative), 4000);
+            return;
         }
     }
 
-    bool tracked = false;
+    if (!ignoreFile.open(QIODevice::Append | QIODevice::Text)) {
+        QMessageBox::warning(this, tr("忽略文件"),
+                             tr("打不开 .gitignore：%1").arg(ignoreFile.errorString()));
+        return;
+    }
+    QTextStream stream(&ignoreFile);
+    stream << relative << "\n";
+    ignoreFile.close();
+
+    statusBar()->showMessage(tr("已把 %1 写进 .gitignore").arg(relative), 4000);
+}
+
+void MainWindow::gitRemoveRemote(const QString &path)
+{
+    if (m_gitRoot.isEmpty())
+        return;
+
+    const QString relative = QDir(m_gitRoot).relativeFilePath(path);
+
     QProcess check;
     check.setWorkingDirectory(m_gitRoot);
     check.start(QStringLiteral("git"), {QStringLiteral("ls-files"), QStringLiteral("--error-unmatch"),
                                         QStringLiteral("--"), relative});
-    if (check.waitForFinished(5000))
-        tracked = (check.exitCode() == 0);
+    if (!(check.waitForFinished(5000) && check.exitCode() == 0)) {
+        QMessageBox::information(this, tr("删除远端"),
+                                 tr("「%1」没有被 git 跟踪，远端本来就没有它。").arg(relative));
+        return;
+    }
 
-    if (tracked)
-        enqueueGit({QStringLiteral("rm"), QStringLiteral("--cached"), QStringLiteral("--"), relative},
-                   tr("从仓库移除"));
-    enqueueGit({QStringLiteral("add"), QStringLiteral("--"), QStringLiteral(".gitignore")},
-               tr("更新忽略列表"));
+    QMessageBox box(QMessageBox::Warning, tr("删除远端"),
+                    tr("从仓库删除「%1」并推送到远端？\n\n"
+                       "本地文件会保留，远端和别人 pull 下来的仓库里会删掉它。")
+                        .arg(relative),
+                    QMessageBox::NoButton, this);
+    QPushButton *confirm = box.addButton(tr("删除并推送"), QMessageBox::AcceptRole);
+    box.addButton(tr("取消"), QMessageBox::RejectRole);
+    box.exec();
+    if (box.clickedButton() != confirm)
+        return;
+
+    enqueueGit({QStringLiteral("rm"), QStringLiteral("--cached"), QStringLiteral("--"), relative},
+               tr("从仓库移除"));
     enqueueGit({QStringLiteral("commit"), QStringLiteral("-m"),
-                tr("chore: 忽略 %1").arg(relative)},
+                tr("chore: 从仓库删除 %1").arg(relative)},
                tr("提交"));
     enqueueGit({QStringLiteral("push")}, tr("推送"));
 }
@@ -1347,8 +1353,13 @@ void MainWindow::showFileContextMenu(const QPoint &pos)
 
     if (!m_gitRoot.isEmpty()) {
         menu.addSeparator();
-        menu.addAction(tr("添加到提交"), this, [this, path] { gitAddFile(path); });
-        menu.addAction(tr("忽略（并从远端删除）"), this, [this, path] { gitIgnoreFile(path); });
+        QAction *addAction = menu.addAction(tr("添加"), this, [this, path] { gitAddFile(path); });
+        addAction->setToolTip(tr("git add 这个文件"));
+        QAction *ignoreAction = menu.addAction(tr("忽略"), this, [this, path] { gitIgnoreFile(path); });
+        ignoreAction->setToolTip(tr("把路径写进 .gitignore（不改仓库里已跟踪的文件）"));
+        QAction *removeAction =
+            menu.addAction(tr("删除远端"), this, [this, path] { gitRemoveRemote(path); });
+        removeAction->setToolTip(tr("git rm --cached 后提交并推送：远端删除，本地保留"));
     }
 
     menu.exec(m_fileList->viewport()->mapToGlobal(pos));
