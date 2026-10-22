@@ -276,9 +276,10 @@ void Renderer::renderCodeBlock(const QStringList &lines, const QString &info)
             frameCursor.insertText(QStringLiteral(" "), format);
     }
 
-    // 光标挪到边框外面，后面的内容接着写
+    // 光标挪到边框外面：lastPosition() 还在框内，+1 才是框后面的位置，
+    // 否则后续内容会一层层嵌进这个框里，排版高度爆掉、导出时卡死。
     m_cursor = QTextCursor(m_document);
-    m_cursor.setPosition(frame->lastPosition());
+    m_cursor.setPosition(qMin(frame->lastPosition() + 1, m_document->characterCount() - 1));
 }
 
 QColor Renderer::tokenColor(CodeHighlight::Token token) const
@@ -373,8 +374,9 @@ void Renderer::renderTable(const QStringList &rows, const QString &separator)
         }
     }
 
+    // 同样要跨过表格边界，否则后面的内容会塞进最后一个单元格
     m_cursor = QTextCursor(m_document);
-    m_cursor.setPosition(table->lastPosition());
+    m_cursor.setPosition(qMin(table->lastPosition() + 1, m_document->characterCount() - 1));
 }
 
 void Renderer::renderRule()
