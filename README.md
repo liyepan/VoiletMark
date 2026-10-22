@@ -210,8 +210,8 @@ packaging/            各平台图标（ico / icns / png）与 .desktop
 
 ## 下一版计划
 
-- 实时预览（右侧或同屏渲染）
 - 查找 / 替换
 - 列表按回车自动续行
 - 表格与数学公式支持
-- 导出 HTML / PDF
+- 导出 HTML
+- HTML / CSS 的语法高亮

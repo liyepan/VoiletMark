@@ -72,7 +72,7 @@ const char kWelcomeText[] = R"VOILETMARK(
 
 - [x] 自动深浅色主题
 - [x] Markdown 语法高亮
-- [x] 导出 PDF（带预览）
+- [x] 导出 PDF
 
 ```cpp
 #include <cstdio>
