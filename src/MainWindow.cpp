@@ -68,7 +68,7 @@ const char kWelcomeText[] = R"VOILETMARK(
 
 - [x] 自动深浅色主题
 - [x] Markdown 语法高亮
-- [ ] 实时预览（下一版）
+- [x] 导出 PDF（带预览）
 
 ```cpp
 #include <cstdio>
@@ -671,7 +671,7 @@ void MainWindow::showAbout()
 {
     QMessageBox box(this);
     box.setWindowTitle(tr("关于 VoiletMark"));
-    box.setIconPixmap(QPixmap(QStringLiteral(":/logo.png"))
+    box.setIconPixmap(QPixmap(QStringLiteral(":/packaging/voiletmark.png"))
                           .scaled(72, 72, Qt::KeepAspectRatio, Qt::SmoothTransformation));
     box.setTextFormat(Qt::RichText);
     box.setText(tr("<h3>VoiletMark %1</h3>"

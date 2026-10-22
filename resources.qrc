@@ -1,5 +1,5 @@
 <RCC>
     <qresource prefix="/">
-        <file>logo.png</file>
+        <file>packaging/voiletmark.png</file>
     </qresource>
 </RCC>

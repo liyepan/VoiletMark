@@ -11,6 +11,7 @@
 #include <QPageSize>
 #include <QPrinter>
 #include <QPushButton>
+#include <QScreen>
 #include <QTextBrowser>
 #include <QTextDocument>
 #include <QVBoxLayout>
@@ -23,7 +24,10 @@ ExportDialog::ExportDialog(const QString &markdown, const QString &documentName,
 {
     setWindowTitle(tr("导出 PDF — %1")
                        .arg(documentName.isEmpty() ? tr("未命名") : documentName));
-    resize(900, 840);
+
+    // 别让窗口比屏幕还高，否则底部的按钮会顶到屏幕外面去。
+    const QRect available = screen() ? screen()->availableGeometry() : QRect(0, 0, 1280, 900);
+    resize(qMin(900, available.width() - 80), qMin(860, available.height() - 100));
 
     QVBoxLayout *layout = new QVBoxLayout(this);
     layout->setContentsMargins(16, 16, 16, 12);

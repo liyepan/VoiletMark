@@ -16,7 +16,7 @@ int main(int argc, char *argv[])
 
     QApplication app(argc, argv);
     QApplication::setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
-    QApplication::setWindowIcon(QIcon(QStringLiteral(":/logo.png")));
+    QApplication::setWindowIcon(QIcon(QStringLiteral(":/packaging/voiletmark.png")));
     QGuiApplication::setDesktopFileName(QStringLiteral("voiletmark"));
 
     QCoreApplication::setOrganizationName(QStringLiteral("VoiletMark"));

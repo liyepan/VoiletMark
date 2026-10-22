@@ -2,7 +2,7 @@
 
 一个轻量的跨平台 Markdown 编辑器，基于 **Qt 5 / C++17** 构建。
 
-当前版本 **0.5.0**。
+当前版本 **0.5.1**。
 
 ## 界面
 
@@ -140,7 +140,9 @@ make -C build install INSTALL_ROOT=/tmp/pkg # 打包用，装到 /tmp/pkg/usr/lo
 
 ## 图标
 
-`logo.png` 是源文件，`packaging/` 里是从它生成的各平台图标：
+`logo.png` 是源文件，`packaging/generate_icons.py` 从它生成各平台图标。
+源图是**黑色字标 + 透明背景**，直接做成图标放进深色任务栏会“消失”，
+所以脚本会给它垫一块白色圆角底板，并输出多个尺寸（16–256）：
 
 | 文件 | 平台 |
 | --- | --- |
@@ -149,6 +151,7 @@ make -C build install INSTALL_ROOT=/tmp/pkg # 打包用，装到 /tmp/pkg/usr/lo
 | `voiletmark.png` | Linux 桌面图标（hicolor 256×256） |
 
 运行时的窗口图标直接嵌在资源里（`resources.qrc`），所以不安装也有图标。
+改了 `logo.png` 之后跑一次 `python3 packaging/generate_icons.py` 重新生成即可。
 
 ## 命令行
 
