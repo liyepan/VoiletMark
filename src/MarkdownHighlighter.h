@@ -1,14 +1,20 @@
 #pragma once
 
+#include <QColor>
 #include <QRegularExpression>
 #include <QSyntaxHighlighter>
 #include <QTextCharFormat>
 
-/// Markdown 语法着色。
+/// Markdown 着色与“就地渲染”。
 ///
-/// 只做“逐行着色”，不改动文档内容：标题、引用、列表、行内样式、
-/// 链接以及跨行的围栏代码块。颜色全部取自 ThemeManager，
-/// 主题切换后自动重建格式并重新着色。
+/// 两种形态：
+///  - 渲染模式（默认，对应界面的“编辑器模式”）：隐藏 #、**、反引号等标记，
+///    标题按级别放大、加粗文本真加粗、链接只留文字；光标所在行会露出原始标记，
+///    方便直接修改。
+///  - 源码模式：原样显示所有标记，只做着色。
+///
+/// 注意：QSyntaxHighlighter::setFormat 是“整段替换”而不是合并，所以这里
+/// 每一段都先和当前行的基础格式（标题 / 引用 / 代码块）合并后再设置。
 class MarkdownHighlighter : public QSyntaxHighlighter
 {
     Q_OBJECT
@@ -16,8 +22,15 @@ class MarkdownHighlighter : public QSyntaxHighlighter
 public:
     explicit MarkdownHighlighter(QTextDocument *document = nullptr);
 
-    /// 源代码模式会关掉着色，但不改文档内容（rehighlight 会清掉旧格式）。
-    void setHighlightingEnabled(bool enabled);
+    void setRendered(bool rendered);
+    bool isRendered() const { return m_rendered; }
+
+    /// 光标所在行；渲染模式下这一行不隐藏标记。
+    void setActiveBlock(int blockNumber);
+    int activeBlock() const { return m_activeBlock; }
+
+    /// 主题或字号变化后重建格式并重新着色。
+    void refreshAppearance();
 
 protected:
     void highlightBlock(const QString &text) override;
@@ -25,12 +38,21 @@ protected:
 private:
     void rebuildFormats();
     void apply(int start, int length, const QTextCharFormat &format);
-    void applyPattern(const QRegularExpression &pattern, const QString &text,
-                      const QTextCharFormat &format);
+    void applyDelimited(const QRegularExpression &pattern, const QString &text,
+                        const QTextCharFormat &contentFormat, int contentGroup,
+                        const QColor &hideAgainst);
+    QTextCharFormat compose(const QTextCharFormat &specific) const;
+    QTextCharFormat hiddenFormat(const QColor &background) const;
+    bool isActiveLine() const;
 
-    QTextCharFormat m_headingFormat;
+    bool m_rendered = true;
+    int m_activeBlock = -1;
+    QTextCharFormat m_blockBase;
+
+    QTextCharFormat m_headingFormats[6];
     QTextCharFormat m_headingMarkerFormat;
     QTextCharFormat m_strongFormat;
+    QTextCharFormat m_boldItalicFormat;
     QTextCharFormat m_emphasisFormat;
     QTextCharFormat m_codeFormat;
     QTextCharFormat m_linkFormat;
@@ -41,5 +63,4 @@ private:
     QTextCharFormat m_ruleFormat;
     QTextCharFormat m_taskDoneFormat;
     QTextCharFormat m_strikeFormat;
-    bool m_enabled = true;
 };

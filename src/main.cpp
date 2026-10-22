@@ -4,6 +4,7 @@
 #include <QApplication>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
+#include <QIcon>
 #include <QPixmap>
 #include <QStyleFactory>
 #include <QTimer>
@@ -15,6 +16,7 @@ int main(int argc, char *argv[])
 
     QApplication app(argc, argv);
     QApplication::setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
+    QApplication::setWindowIcon(QIcon(QStringLiteral(":/logo.png")));
 
     QCoreApplication::setOrganizationName(QStringLiteral("VoiletMark"));
     QCoreApplication::setApplicationName(QStringLiteral("VoiletMark"));

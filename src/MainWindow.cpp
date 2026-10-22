@@ -193,6 +193,10 @@ void MainWindow::createActions()
     connect(m_sidebarAction, &QAction::toggled, this, [this](bool visible) {
         if (m_sidebar)
             m_sidebar->setVisible(visible);
+        if (m_sidebarButton) {
+            const QSignalBlocker blocker(m_sidebarButton);
+            m_sidebarButton->setChecked(visible);
+        }
         QSettings().setValue(QStringLiteral("window/sidebarVisible"), visible);
     });
 
@@ -230,16 +234,9 @@ void MainWindow::createSidebar()
     layout->setContentsMargins(8, 8, 8, 8);
     layout->setSpacing(6);
 
-    QHBoxLayout *header = new QHBoxLayout();
-    header->setSpacing(4);
     m_folderLabel = new QLabel(tr("未打开文件夹"), content);
     m_folderLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-    QToolButton *refreshButton = new QToolButton(content);
-    refreshButton->setText(tr("刷新"));
-    refreshButton->setToolTip(tr("重新扫描文件夹里的 Markdown 文件"));
-    header->addWidget(m_folderLabel, 1);
-    header->addWidget(refreshButton);
-    layout->addLayout(header);
+    layout->addWidget(m_folderLabel);
 
     m_fileList = new QListWidget(content);
     m_fileList->setFrameShape(QFrame::NoFrame);
@@ -252,8 +249,13 @@ void MainWindow::createSidebar()
     addDockWidget(Qt::LeftDockWidgetArea, m_sidebar);
     resizeDocks({m_sidebar}, {250}, Qt::Horizontal);
 
-    connect(refreshButton, &QToolButton::clicked, this, &MainWindow::refreshFolder);
     connect(m_fileList, &QListWidget::itemClicked, this, &MainWindow::openSidebarItem);
+
+    // 列表自己刷新：没有“刷新”按钮，每 5 秒比对一次文件集合，变了才重建。
+    m_folderRefreshTimer = new QTimer(this);
+    m_folderRefreshTimer->setInterval(5000);
+    connect(m_folderRefreshTimer, &QTimer::timeout, this, &MainWindow::refreshFolder);
+    m_folderRefreshTimer->start();
 }
 
 void MainWindow::createMenus()
@@ -330,7 +332,16 @@ void MainWindow::createMenus()
 
 void MainWindow::createStatusBar()
 {
-    // 左下角的 <src> 开关：切到源代码模式。
+    // 左下角：侧栏开关 + 源代码模式开关。
+    m_sidebarButton = new QToolButton(this);
+    m_sidebarButton->setText(tr("侧栏"));
+    m_sidebarButton->setCheckable(true);
+    m_sidebarButton->setChecked(true);
+    m_sidebarButton->setCursor(Qt::PointingHandCursor);
+    m_sidebarButton->setToolTip(tr("显示 / 隐藏文件夹侧栏（Ctrl+B）"));
+    statusBar()->addWidget(m_sidebarButton);
+    connect(m_sidebarButton, &QToolButton::toggled, m_sidebarAction, &QAction::setChecked);
+
     m_sourceButton = new QToolButton(this);
     m_sourceButton->setText(QStringLiteral("<src>"));
     m_sourceButton->setCheckable(true);
@@ -719,24 +730,13 @@ void MainWindow::openFolder(const QString &path)
     m_sidebarAction->setChecked(true);
 }
 
-void MainWindow::refreshFolder()
+QStringList MainWindow::scanFolder() const
 {
-    if (!m_fileList)
-        return;
-
-    m_fileList->clear();
-
-    if (m_folderPath.isEmpty() || !QFileInfo(m_folderPath).isDir()) {
-        m_folderLabel->setText(tr("未打开文件夹"));
-        m_folderLabel->setToolTip(tr("文件 → 打开文件夹…"));
-        return;
-    }
+    QStringList files;
+    if (m_folderPath.isEmpty() || !QFileInfo(m_folderPath).isDir())
+        return files;
 
     const QDir root(m_folderPath);
-    m_folderLabel->setText(root.dirName().isEmpty() ? m_folderPath : root.dirName());
-    m_folderLabel->setToolTip(QDir::toNativeSeparators(m_folderPath));
-
-    QStringList files;
     QDirIterator iterator(m_folderPath,
                           {QStringLiteral("*.md"), QStringLiteral("*.markdown"),
                            QStringLiteral("*.mdown"), QStringLiteral("*.mkd")},
@@ -753,6 +753,47 @@ void MainWindow::refreshFolder()
         return root.relativeFilePath(left).compare(root.relativeFilePath(right),
                                                    Qt::CaseInsensitive) < 0;
     });
+    return files;
+}
+
+void MainWindow::refreshFolder()
+{
+    if (!m_fileList)
+        return;
+
+    if (m_folderPath.isEmpty() || !QFileInfo(m_folderPath).isDir()) {
+        if (m_fileList->count() > 0 || m_displayedFolder != m_folderPath) {
+            m_fileList->clear();
+            m_displayedFolder = m_folderPath;
+            m_folderLabel->setText(tr("未打开文件夹"));
+            m_folderLabel->setToolTip(tr("文件 → 打开文件夹…"));
+        }
+        return;
+    }
+
+    const QDir root(m_folderPath);
+    if (m_displayedFolder != m_folderPath) {
+        m_displayedFolder = m_folderPath;
+        m_fileList->clear();
+        m_folderLabel->setText(root.dirName().isEmpty() ? m_folderPath : root.dirName());
+        m_folderLabel->setToolTip(QDir::toNativeSeparators(m_folderPath));
+    }
+
+    const QStringList files = scanFolder();
+
+    // 和当前显示的内容一致就什么都不做，避免每 5 秒闪一下、丢失选中项。
+    QStringList shown;
+    shown.reserve(m_fileList->count());
+    for (int index = 0; index < m_fileList->count(); ++index) {
+        const QString path = m_fileList->item(index)->data(Qt::UserRole).toString();
+        if (!path.isEmpty())
+            shown.append(path);
+    }
+    if (files == shown)
+        return;
+
+    const QString selectedPath = m_currentPath;
+    m_fileList->clear();
 
     for (const QString &filePath : files) {
         QListWidgetItem *item = new QListWidgetItem(root.relativeFilePath(filePath), m_fileList);
@@ -765,7 +806,7 @@ void MainWindow::refreshFolder()
         empty->setFlags(Qt::NoItemFlags);
     }
 
-    selectInSidebar(m_currentPath);
+    selectInSidebar(selectedPath);
 }
 
 void MainWindow::openSidebarItem(QListWidgetItem *item)

@@ -48,6 +48,7 @@ private slots:
     void updateLineNumberAreaWidth(int newBlockCount);
     void updateLineNumberArea(const QRect &rect, int dy);
     void updateCurrentLineHighlight();
+    void updateActiveBlock();
     void applyTheme();
 
 private:
@@ -63,4 +64,5 @@ private:
     MarkdownHighlighter *m_highlighter = nullptr;
     int m_fontPointSize = 12;
     bool m_sourceMode = false;
+    int m_activeBlock = -1;
 };

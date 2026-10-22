@@ -74,6 +74,8 @@ MarkdownEditor::MarkdownEditor(QWidget *parent)
 
     m_lineNumberArea = new LineNumberArea(this);
     m_highlighter = new MarkdownHighlighter(document());
+    m_activeBlock = textCursor().blockNumber();
+    m_highlighter->setActiveBlock(m_activeBlock);
 
     connect(this, &QPlainTextEdit::blockCountChanged,
             this, &MarkdownEditor::updateLineNumberAreaWidth);
@@ -81,6 +83,8 @@ MarkdownEditor::MarkdownEditor(QWidget *parent)
             this, &MarkdownEditor::updateLineNumberArea);
     connect(this, &QPlainTextEdit::cursorPositionChanged,
             this, &MarkdownEditor::updateCurrentLineHighlight);
+    connect(this, &QPlainTextEdit::cursorPositionChanged,
+            this, &MarkdownEditor::updateActiveBlock);
     connect(ThemeManager::instance(), &ThemeManager::schemeChanged,
             this, &MarkdownEditor::applyTheme);
 
@@ -159,11 +163,15 @@ void MarkdownEditor::applyEditorFont()
     document()->setDefaultFont(font);
     setTabStopDistance(QFontMetricsF(font).horizontalAdvance(QLatin1Char(' ')) * 4.0);
     updateLineNumberAreaWidth(0);
+
+    // 标题字号是根据正文大小算的，缩放后要让高亮层重建格式。
+    if (m_highlighter)
+        m_highlighter->refreshAppearance();
 }
 
 void MarkdownEditor::updateLineNumberAreaWidth(int)
 {
-    setViewportMargins(m_sourceMode ? 0 : lineNumberAreaWidth(), 0, 0, 0);
+    setViewportMargins(lineNumberAreaWidth(), 0, 0, 0);
 }
 
 void MarkdownEditor::updateLineNumberArea(const QRect &rect, int dy)
@@ -179,11 +187,6 @@ void MarkdownEditor::updateLineNumberArea(const QRect &rect, int dy)
 
 void MarkdownEditor::updateCurrentLineHighlight()
 {
-    if (m_sourceMode) {
-        setExtraSelections({});
-        return;
-    }
-
     QTextEdit::ExtraSelection selection;
     selection.format.setBackground(ThemeManager::instance()->colors().currentLine);
     selection.format.setProperty(QTextFormat::FullWidthSelection, true);
@@ -205,22 +208,32 @@ void MarkdownEditor::setSourceMode(bool enabled)
         return;
 
     m_sourceMode = enabled;
-    m_highlighter->setHighlightingEnabled(!enabled);
+    m_activeBlock = textCursor().blockNumber();
+    m_highlighter->setActiveBlock(m_activeBlock);
+    m_highlighter->setRendered(!enabled);
 
-    if (enabled)
-        setExtraSelections({});
-    else
-        updateCurrentLineHighlight();
-
-    m_lineNumberArea->setVisible(!enabled);
-    updateLineNumberAreaWidth(0);
-
-    const QRect rect = contentsRect();
-    m_lineNumberArea->setGeometry(QRect(rect.left(), rect.top(),
-                                        lineNumberAreaWidth(), rect.height()));
-
+    updateCurrentLineHighlight();
     viewport()->update();
     emit sourceModeChanged(enabled);
+}
+
+void MarkdownEditor::updateActiveBlock()
+{
+    if (m_sourceMode)
+        return;
+
+    const int blockNumber = textCursor().blockNumber();
+    if (blockNumber == m_activeBlock)
+        return;
+
+    const QTextBlock previous = document()->findBlockByNumber(m_activeBlock);
+    m_activeBlock = blockNumber;
+    m_highlighter->setActiveBlock(blockNumber);
+
+    // 只重排两行：离开的那行重新隐藏标记，进入的那行露出来。
+    if (previous.isValid())
+        m_highlighter->rehighlightBlock(previous);
+    m_highlighter->rehighlightBlock(textCursor().block());
 }
 
 void MarkdownEditor::selectedBlockRange(int *firstBlock, int *lastBlock) const

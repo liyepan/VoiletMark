@@ -1,15 +1,17 @@
 TEMPLATE = app
 TARGET   = VoiletMark
-VERSION  = 0.2.0
+VERSION  = 0.3.0
 
 QT += core gui widgets
 
 CONFIG += c++17 warn_on
 
-# 让 main.cpp 里的 QStringLiteral(VM_VERSION) 拿到 "0.1.0"
+# 让 main.cpp 里的 QStringLiteral(VM_VERSION) 拿到版本号字符串
 DEFINES += VM_VERSION=\\\"$$VERSION\\\"
 
 INCLUDEPATH += $$PWD/src
+
+RESOURCES += resources.qrc
 
 SOURCES += \
     src/main.cpp \

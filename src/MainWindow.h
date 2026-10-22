@@ -54,6 +54,7 @@ private:
     void refreshFolder();
     void openSidebarItem(QListWidgetItem *item);
     void selectInSidebar(const QString &path);
+    QStringList scanFolder() const;
     void setSourceModeEnabled(bool enabled);
 
     void changeZoom(int direction);
@@ -76,7 +77,10 @@ private:
     QListWidget *m_fileList = nullptr;
     QLabel *m_folderLabel = nullptr;
     QToolButton *m_sourceButton = nullptr;
+    QToolButton *m_sidebarButton = nullptr;
+    QTimer *m_folderRefreshTimer = nullptr;
     QString m_folderPath;
+    QString m_displayedFolder;
 
     QString m_currentPath;
     Eol m_eol = Eol::Lf;
