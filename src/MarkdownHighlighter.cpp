@@ -90,10 +90,18 @@ void MarkdownHighlighter::applyPattern(const QRegularExpression &pattern, const 
     }
 }
 
+void MarkdownHighlighter::setHighlightingEnabled(bool enabled)
+{
+    if (m_enabled == enabled)
+        return;
+    m_enabled = enabled;
+    rehighlight();
+}
+
 void MarkdownHighlighter::highlightBlock(const QString &text)
 {
     setCurrentBlockState(StateNormal);
-    if (text.isEmpty())
+    if (!m_enabled || text.isEmpty())
         return;
 
     static const QRegularExpression fencePattern(QStringLiteral("^\\s{0,3}(?:```|~~~)"));

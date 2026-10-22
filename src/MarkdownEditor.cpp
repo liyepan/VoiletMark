@@ -12,7 +12,9 @@
 #include <QKeyEvent>
 #include <QMimeData>
 #include <QPainter>
+#include <QRegularExpression>
 #include <QTextBlock>
+#include <QTextCursor>
 #include <QTextOption>
 #include <QUrl>
 #include <QWheelEvent>
@@ -20,6 +22,17 @@
 namespace {
 
 constexpr int kLineNumberRightPadding = 14;
+
+const QString &fenceMarker()
+{
+    static const QString marker = QString(QChar(96)).repeated(3);
+    return marker;
+}
+
+bool isFenceLine(const QTextBlock &block)
+{
+    return block.isValid() && block.text().trimmed().startsWith(fenceMarker());
+}
 
 class LineNumberArea : public QWidget
 {
@@ -150,7 +163,7 @@ void MarkdownEditor::applyEditorFont()
 
 void MarkdownEditor::updateLineNumberAreaWidth(int)
 {
-    setViewportMargins(lineNumberAreaWidth(), 0, 0, 0);
+    setViewportMargins(m_sourceMode ? 0 : lineNumberAreaWidth(), 0, 0, 0);
 }
 
 void MarkdownEditor::updateLineNumberArea(const QRect &rect, int dy)
@@ -166,6 +179,11 @@ void MarkdownEditor::updateLineNumberArea(const QRect &rect, int dy)
 
 void MarkdownEditor::updateCurrentLineHighlight()
 {
+    if (m_sourceMode) {
+        setExtraSelections({});
+        return;
+    }
+
     QTextEdit::ExtraSelection selection;
     selection.format.setBackground(ThemeManager::instance()->colors().currentLine);
     selection.format.setProperty(QTextFormat::FullWidthSelection, true);
@@ -179,6 +197,206 @@ void MarkdownEditor::applyTheme()
     updateCurrentLineHighlight();
     m_lineNumberArea->update();
     viewport()->update();
+}
+
+void MarkdownEditor::setSourceMode(bool enabled)
+{
+    if (m_sourceMode == enabled)
+        return;
+
+    m_sourceMode = enabled;
+    m_highlighter->setHighlightingEnabled(!enabled);
+
+    if (enabled)
+        setExtraSelections({});
+    else
+        updateCurrentLineHighlight();
+
+    m_lineNumberArea->setVisible(!enabled);
+    updateLineNumberAreaWidth(0);
+
+    const QRect rect = contentsRect();
+    m_lineNumberArea->setGeometry(QRect(rect.left(), rect.top(),
+                                        lineNumberAreaWidth(), rect.height()));
+
+    viewport()->update();
+    emit sourceModeChanged(enabled);
+}
+
+void MarkdownEditor::selectedBlockRange(int *firstBlock, int *lastBlock) const
+{
+    const QTextCursor cursor = textCursor();
+    int first = cursor.blockNumber();
+    int last = first;
+
+    if (cursor.hasSelection()) {
+        QTextCursor start(document());
+        start.setPosition(cursor.selectionStart());
+        QTextCursor end(document());
+        end.setPosition(cursor.selectionEnd());
+        first = start.blockNumber();
+        last = end.blockNumber();
+        // 选区正好停在下一行行首时，不要把那一行算进来。
+        if (end.positionInBlock() == 0 && last > first)
+            --last;
+    }
+
+    if (firstBlock) *firstBlock = first;
+    if (lastBlock) *lastBlock = last;
+}
+
+void MarkdownEditor::selectBlocks(int firstBlock, int lastBlock)
+{
+    const QTextBlock first = document()->findBlockByNumber(firstBlock);
+    const QTextBlock last = document()->findBlockByNumber(lastBlock);
+    if (!first.isValid() || !last.isValid())
+        return;
+
+    QTextCursor cursor(document());
+    cursor.setPosition(first.position());
+    cursor.setPosition(last.position() + last.text().length(), QTextCursor::KeepAnchor);
+    setTextCursor(cursor);
+}
+
+void MarkdownEditor::setHeadingLevel(int level)
+{
+    level = qBound(0, level, 6);
+
+    int firstBlock = 0;
+    int lastBlock = 0;
+    selectedBlockRange(&firstBlock, &lastBlock);
+
+    static const QRegularExpression headingPattern(QStringLiteral("^\\s{0,3}#{1,6}\\s+"));
+
+    bool alreadySame = level > 0;
+    if (alreadySame) {
+        const QString prefix = QString(level, QChar('#')).append(QLatin1Char(' '));
+        for (int index = firstBlock; index <= lastBlock; ++index) {
+            if (!document()->findBlockByNumber(index).text().startsWith(prefix)) {
+                alreadySame = false;
+                break;
+            }
+        }
+    }
+
+    const int target = alreadySame ? 0 : level;
+    const QString newPrefix = target > 0
+                                  ? QString(target, QChar('#')).append(QLatin1Char(' '))
+                                  : QString();
+
+    QTextCursor edit(document());
+    edit.beginEditBlock();
+    for (int index = firstBlock; index <= lastBlock; ++index) {
+        const QTextBlock block = document()->findBlockByNumber(index);
+        const QString original = block.text();
+        QString text = original;
+        text.remove(headingPattern);
+        if (!newPrefix.isEmpty())
+            text.prepend(newPrefix);
+
+        QTextCursor blockCursor(block);
+        blockCursor.setPosition(block.position());
+        blockCursor.setPosition(block.position() + original.length(), QTextCursor::KeepAnchor);
+        blockCursor.insertText(text);
+    }
+    edit.endEditBlock();
+
+    selectBlocks(firstBlock, lastBlock);
+}
+
+void MarkdownEditor::toggleCodeBlock()
+{
+    int firstBlockNumber = 0;
+    int lastBlockNumber = 0;
+    selectedBlockRange(&firstBlockNumber, &lastBlockNumber);
+
+    const QTextBlock first = document()->findBlockByNumber(firstBlockNumber);
+    const QTextBlock last = document()->findBlockByNumber(lastBlockNumber);
+    if (!first.isValid() || !last.isValid())
+        return;
+
+    // 整块删掉一行（含行尾换行）。
+    const auto removeBlock = [this](const QTextBlock &block) {
+        QTextCursor cursor(block);
+        cursor.setPosition(block.position());
+        const int end = qMin(block.position() + block.length(), document()->characterCount() - 1);
+        cursor.setPosition(end, QTextCursor::KeepAnchor);
+        cursor.removeSelectedText();
+    };
+
+    QTextCursor edit(document());
+
+    // 1) 选中的首尾行本身就是围栏 → 拆掉这两行。
+    if (lastBlockNumber > firstBlockNumber && isFenceLine(first) && isFenceLine(last)) {
+        edit.beginEditBlock();
+        removeBlock(last);
+        removeBlock(first);
+        edit.endEditBlock();
+        return;
+    }
+
+    // 2) 选中内容整体落在某个围栏块内部 → 拆掉外层围栏。
+    QTextBlock opener;
+    QTextBlock closer;
+    if (enclosingFence(firstBlockNumber, lastBlockNumber, &opener, &closer)) {
+        edit.beginEditBlock();
+        removeBlock(closer);
+        removeBlock(opener);
+        edit.endEditBlock();
+        return;
+    }
+
+    // 3) 包成围栏代码块。
+    const int startPosition = first.position();
+    const int endPosition = last.position() + last.text().length();
+
+    edit.beginEditBlock();
+    QTextCursor tail(document());
+    tail.setPosition(endPosition);
+    tail.insertText(QLatin1Char('\n') + fenceMarker());
+    QTextCursor head(document());
+    head.setPosition(startPosition);
+    head.insertText(fenceMarker() + QLatin1Char('\n'));
+    edit.endEditBlock();
+
+    QTextCursor selection(document());
+    selection.setPosition(startPosition);
+    selection.setPosition(endPosition + 8, QTextCursor::KeepAnchor);
+    setTextCursor(selection);
+}
+
+bool MarkdownEditor::enclosingFence(int firstBlockNumber, int lastBlockNumber,
+                                    QTextBlock *opener, QTextBlock *closer) const
+{
+    bool inFence = false;
+    bool captured = false;
+    QTextBlock candidate;
+
+    for (QTextBlock block = document()->firstBlock(); block.isValid(); block = block.next()) {
+        const int number = block.blockNumber();
+        const bool fenceLine = isFenceLine(block);
+
+        if (number == firstBlockNumber) {
+            captured = inFence;
+            if (opener)
+                *opener = candidate;
+        }
+        if (captured && number > lastBlockNumber && fenceLine) {
+            if (closer)
+                *closer = block;
+            return true;
+        }
+        if (fenceLine) {
+            if (!inFence) {
+                inFence = true;
+                candidate = block;
+            } else {
+                inFence = false;
+                candidate = QTextBlock();
+            }
+        }
+    }
+    return false;
 }
 
 void MarkdownEditor::resizeEvent(QResizeEvent *event)

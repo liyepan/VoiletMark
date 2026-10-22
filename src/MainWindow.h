@@ -5,9 +5,13 @@
 
 class QAction;
 class QActionGroup;
+class QDockWidget;
 class QLabel;
+class QListWidget;
+class QListWidgetItem;
 class QMenu;
 class QTextDocument;
+class QToolButton;
 class MarkdownEditor;
 
 class MainWindow : public QMainWindow
@@ -26,6 +30,7 @@ private:
     enum class Eol { Lf, Crlf };
 
     void createActions();
+    void createSidebar();
     void createMenus();
     void createStatusBar();
     void loadSettings();
@@ -44,6 +49,13 @@ private:
     void refreshRecentMenu();
     void loadRecentFiles();
 
+    void chooseFolder();
+    void openFolder(const QString &path);
+    void refreshFolder();
+    void openSidebarItem(QListWidgetItem *item);
+    void selectInSidebar(const QString &path);
+    void setSourceModeEnabled(bool enabled);
+
     void changeZoom(int direction);
     void resetZoom();
     void setWordWrapEnabled(bool enabled);
@@ -59,6 +71,12 @@ private:
 
     MarkdownEditor *m_editor = nullptr;
     QLabel *m_statusLabel = nullptr;
+
+    QDockWidget *m_sidebar = nullptr;
+    QListWidget *m_fileList = nullptr;
+    QLabel *m_folderLabel = nullptr;
+    QToolButton *m_sourceButton = nullptr;
+    QString m_folderPath;
 
     QString m_currentPath;
     Eol m_eol = Eol::Lf;
@@ -87,6 +105,13 @@ private:
     QAction *m_themeSystemAction = nullptr;
     QAction *m_themeLightAction = nullptr;
     QAction *m_themeDarkAction = nullptr;
+    QAction *m_themeScheduleAction = nullptr;
+
+    QAction *m_openFolderAction = nullptr;
+    QAction *m_sidebarAction = nullptr;
+    QAction *m_sourceModeAction = nullptr;
+    QAction *m_codeBlockAction = nullptr;
+    QAction *m_headingActions[6] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
 
     QMenu *m_recentMenu = nullptr;
 };

@@ -16,6 +16,9 @@ class MarkdownHighlighter : public QSyntaxHighlighter
 public:
     explicit MarkdownHighlighter(QTextDocument *document = nullptr);
 
+    /// 源代码模式会关掉着色，但不改文档内容（rehighlight 会清掉旧格式）。
+    void setHighlightingEnabled(bool enabled);
+
 protected:
     void highlightBlock(const QString &text) override;
 
@@ -38,4 +41,5 @@ private:
     QTextCharFormat m_ruleFormat;
     QTextCharFormat m_taskDoneFormat;
     QTextCharFormat m_strikeFormat;
+    bool m_enabled = true;
 };

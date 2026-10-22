@@ -26,6 +26,8 @@ struct ThemeColors
     QColor menuBackground;
     QColor scrollHandle;
     QColor scrollHandleHover;
+    QColor sidebarBackground;
+    QColor hoverBackground;
 
     // 编辑器
     QColor editorBase;
@@ -53,16 +55,17 @@ struct ThemeColors
 
 /// 负责“跟随系统自动切换浅色 / 深色主题”。
 ///
-/// 检测顺序：显式覆盖（环境变量 / 命令行）→ 平台自身设置
+/// 四种模式：跟随系统 / 浅色 / 深色 / 按时段自动（6:00 起浅色、18:00 起深色）。
+/// 跟随系统时的检测顺序：显式覆盖（环境变量 / 命令行）→ 平台自身设置
 /// （Windows 注册表、macOS defaults、Linux 的 KDE / GTK / XFCE / gsettings）
 /// → 启动时的调色板亮度兜底。
-/// 每 2 秒轮询一次系统设置，变化后立即重绘整个界面。
+/// 每 2 秒轮询一次，变化后立即重绘整个界面。
 class ThemeManager : public QObject
 {
     Q_OBJECT
 
 public:
-    enum class Mode { System, Light, Dark };
+    enum class Mode { System, Light, Dark, Schedule };
     enum class Scheme { Light, Dark };
 
     static ThemeManager *instance();
@@ -95,6 +98,9 @@ private:
     QString styleSheet() const;
 
     Scheme detectSystemScheme() const;
+    /// 6:00–18:00 浅色，其余时间深色。
+    Scheme scheduleScheme() const;
+    Scheme schemeForMode(Mode mode) const;
 
     Mode m_mode = Mode::System;
     Scheme m_scheme = Scheme::Light;

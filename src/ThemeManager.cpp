@@ -9,6 +9,7 @@
 #include <QProcess>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QTime>
 #include <QTimer>
 #include <QXmlStreamReader>
 
@@ -76,6 +77,8 @@ ThemeColors lightColors()
     c.menuBackground      = hex("#ffffff");
     c.scrollHandle        = hex("#c9ced6");
     c.scrollHandleHover   = hex("#aeb5bf");
+    c.sidebarBackground   = hex("#f8f9fb");
+    c.hoverBackground     = hex("#eaedf1");
 
     c.editorBase          = hex("#ffffff");
     c.editorText          = hex("#24292f");
@@ -119,6 +122,8 @@ ThemeColors darkColors()
     c.menuBackground      = hex("#242730");
     c.scrollHandle        = hex("#3a3f47");
     c.scrollHandleHover   = hex("#4d535d");
+    c.sidebarBackground   = hex("#1a1c20");
+    c.hoverBackground     = hex("#272b31");
 
     c.editorBase          = hex("#1e2024");
     c.editorText          = hex("#d7dade");
@@ -171,10 +176,7 @@ void ThemeManager::initialize(Mode forcedMode, bool persist)
     } else {
         const QString saved = QSettings().value(QStringLiteral("theme/mode")).toString();
         m_mode = modeFromString(saved, nullptr);
-        const Scheme scheme = (m_mode == Mode::Dark)   ? Scheme::Dark
-                            : (m_mode == Mode::Light)  ? Scheme::Light
-                                                       : detectSystemScheme();
-        applyScheme(scheme, true);
+        applyScheme(schemeForMode(m_mode), true);
     }
     m_pollTimer->start();
 }
@@ -185,20 +187,35 @@ void ThemeManager::setMode(Mode mode, bool persist)
     if (persist)
         QSettings().setValue(QStringLiteral("theme/mode"), modeToString(mode));
 
-    if (m_mode == Mode::System)
-        applyScheme(detectSystemScheme(), true);
-    else
-        applyScheme(m_mode == Mode::Dark ? Scheme::Dark : Scheme::Light, true);
+    applyScheme(schemeForMode(m_mode), true);
 }
 
 void ThemeManager::pollSystemTheme()
 {
-    if (m_mode != Mode::System)
+    if (m_mode == Mode::Light || m_mode == Mode::Dark)
         return;
 
-    const Scheme detected = detectSystemScheme();
-    if (detected != m_scheme)
-        applyScheme(detected, false);
+    // 跟随系统：读桌面设置；按时段：到 6:00 / 18:00 自动翻转。
+    const Scheme target = schemeForMode(m_mode);
+    if (target != m_scheme)
+        applyScheme(target, false);
+}
+
+ThemeManager::Scheme ThemeManager::schemeForMode(Mode mode) const
+{
+    switch (mode) {
+    case Mode::Light:    return Scheme::Light;
+    case Mode::Dark:     return Scheme::Dark;
+    case Mode::Schedule: return scheduleScheme();
+    case Mode::System:   break;
+    }
+    return detectSystemScheme();
+}
+
+ThemeManager::Scheme ThemeManager::scheduleScheme() const
+{
+    const int hour = QTime::currentTime().hour();
+    return (hour >= 6 && hour < 18) ? Scheme::Light : Scheme::Dark;
 }
 
 void ThemeManager::applyScheme(Scheme scheme, bool force)
@@ -276,6 +293,16 @@ QPushButton { background-color: @button; color: @buttonText; border: 1px solid @
 QPushButton:hover { background-color: @highlight; color: @highlightedText; }
 QPushButton:default { background-color: @accent; color: #ffffff; border-color: @accent; }
 QToolTip { background-color: @menuBackground; color: @text; border: 1px solid @border; padding: 4px; }
+QToolButton { border: none; border-radius: 5px; padding: 3px 8px; color: @text; background: transparent; }
+QToolButton:hover { background-color: @hoverBackground; }
+QToolButton:checked { background-color: @highlight; color: @highlightedText; }
+QDockWidget { color: @text; }
+QDockWidget::title { background-color: @window; padding: 6px 8px; }
+QListWidget { background-color: @sidebarBackground; border: 1px solid @border; border-radius: 6px;
+              padding: 3px; outline: 0; }
+QListWidget::item { padding: 4px 6px; border-radius: 4px; }
+QListWidget::item:hover { background-color: @hoverBackground; }
+QListWidget::item:selected { background-color: @highlight; color: @highlightedText; }
 )");
 
     // 先替换长 token，避免 @window 吃掉 @windowText 这类前缀冲突。
@@ -290,6 +317,8 @@ QToolTip { background-color: @menuBackground; color: @text; border: 1px solid @b
     qss.replace(QLatin1String("@placeholder"), m_colors.placeholder.name());
     qss.replace(QLatin1String("@disabled"), m_colors.disabled.name());
     qss.replace(QLatin1String("@border"), m_colors.border.name());
+    qss.replace(QLatin1String("@hoverBackground"), m_colors.hoverBackground.name());
+    qss.replace(QLatin1String("@sidebarBackground"), m_colors.sidebarBackground.name());
     qss.replace(QLatin1String("@accent"), m_colors.accent.name());
     qss.replace(QLatin1String("@highlight"), m_colors.highlight.name());
     qss.replace(QLatin1String("@button"), m_colors.button.name());
@@ -301,9 +330,10 @@ QToolTip { background-color: @menuBackground; color: @text; border: 1px solid @b
 QString ThemeManager::modeToString(Mode mode)
 {
     switch (mode) {
-    case Mode::Light: return QStringLiteral("light");
-    case Mode::Dark:  return QStringLiteral("dark");
-    case Mode::System: break;
+    case Mode::Light:    return QStringLiteral("light");
+    case Mode::Dark:     return QStringLiteral("dark");
+    case Mode::Schedule: return QStringLiteral("schedule");
+    case Mode::System:   break;
     }
     return QStringLiteral("system");
 }
@@ -311,8 +341,9 @@ QString ThemeManager::modeToString(Mode mode)
 ThemeManager::Mode ThemeManager::modeFromString(const QString &value, bool *ok)
 {
     const QString normalized = value.trimmed().toLower();
-    if (normalized == QLatin1String("light")) { if (ok) *ok = true; return Mode::Light; }
-    if (normalized == QLatin1String("dark"))  { if (ok) *ok = true; return Mode::Dark; }
+    if (normalized == QLatin1String("light"))    { if (ok) *ok = true; return Mode::Light; }
+    if (normalized == QLatin1String("dark"))     { if (ok) *ok = true; return Mode::Dark; }
+    if (normalized == QLatin1String("schedule")) { if (ok) *ok = true; return Mode::Schedule; }
     if (ok) *ok = (normalized == QLatin1String("system") || normalized.isEmpty());
     return Mode::System;
 }
@@ -320,9 +351,10 @@ ThemeManager::Mode ThemeManager::modeFromString(const QString &value, bool *ok)
 QString ThemeManager::modeLabel(Mode mode)
 {
     switch (mode) {
-    case Mode::Light: return QObject::tr("浅色");
-    case Mode::Dark:  return QObject::tr("深色");
-    case Mode::System: break;
+    case Mode::Light:    return QObject::tr("浅色");
+    case Mode::Dark:     return QObject::tr("深色");
+    case Mode::Schedule: return QObject::tr("按时段自动");
+    case Mode::System:   break;
     }
     return QObject::tr("跟随系统");
 }

@@ -8,21 +8,32 @@
 #include <QApplication>
 #include <QCloseEvent>
 #include <QDir>
+#include <QDirIterator>
+#include <QDockWidget>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFrame>
+#include <QHBoxLayout>
 #include <QLabel>
+#include <QListWidget>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QSaveFile>
 #include <QSettings>
+#include <QSignalBlocker>
 #include <QStandardPaths>
 #include <QStatusBar>
 #include <QTextBlock>
 #include <QTextCursor>
 #include <QTextDocument>
 #include <QTimer>
+#include <QToolButton>
+#include <QVBoxLayout>
+#include <QWidget>
+
+#include <algorithm>
 
 namespace {
 
@@ -82,6 +93,7 @@ MainWindow::MainWindow(QWidget *parent)
     setCentralWidget(m_editor);
 
     createActions();
+    createSidebar();
     createMenus();
     createStatusBar();
     loadSettings();
@@ -169,6 +181,79 @@ void MainWindow::createActions()
     connect(m_editor, &QPlainTextEdit::redoAvailable, m_redoAction, &QAction::setEnabled);
     connect(m_editor, &QPlainTextEdit::copyAvailable, m_cutAction, &QAction::setEnabled);
     connect(m_editor, &QPlainTextEdit::copyAvailable, m_copyAction, &QAction::setEnabled);
+
+    m_openFolderAction = new QAction(tr("打开文件夹…"), this);
+    m_openFolderAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+O")));
+    connect(m_openFolderAction, &QAction::triggered, this, &MainWindow::chooseFolder);
+
+    m_sidebarAction = new QAction(tr("侧栏"), this);
+    m_sidebarAction->setCheckable(true);
+    m_sidebarAction->setChecked(true);
+    m_sidebarAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+B")));
+    connect(m_sidebarAction, &QAction::toggled, this, [this](bool visible) {
+        if (m_sidebar)
+            m_sidebar->setVisible(visible);
+        QSettings().setValue(QStringLiteral("window/sidebarVisible"), visible);
+    });
+
+    m_sourceModeAction = new QAction(tr("源代码模式"), this);
+    m_sourceModeAction->setCheckable(true);
+    m_sourceModeAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+M")));
+    connect(m_sourceModeAction, &QAction::toggled, this, &MainWindow::setSourceModeEnabled);
+
+    m_codeBlockAction = new QAction(tr("代码块"), this);
+    m_codeBlockAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+/")));
+    connect(m_codeBlockAction, &QAction::triggered, this, [this] {
+        m_editor->toggleCodeBlock();
+    });
+
+    for (int level = 1; level <= 6; ++level) {
+        QAction *action = new QAction(tr("标题 %1").arg(level), this);
+        action->setShortcut(QKeySequence(QStringLiteral("Ctrl+%1").arg(level)));
+        connect(action, &QAction::triggered, this, [this, level] {
+            m_editor->setHeadingLevel(level);
+        });
+        m_headingActions[level - 1] = action;
+    }
+}
+
+void MainWindow::createSidebar()
+{
+    m_sidebar = new QDockWidget(tr("文件夹"), this);
+    m_sidebar->setObjectName(QStringLiteral("folderDock"));
+    m_sidebar->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+    m_sidebar->setFeatures(QDockWidget::NoDockWidgetFeatures);
+    m_sidebar->setTitleBarWidget(new QWidget(m_sidebar));
+
+    QWidget *content = new QWidget(m_sidebar);
+    QVBoxLayout *layout = new QVBoxLayout(content);
+    layout->setContentsMargins(8, 8, 8, 8);
+    layout->setSpacing(6);
+
+    QHBoxLayout *header = new QHBoxLayout();
+    header->setSpacing(4);
+    m_folderLabel = new QLabel(tr("未打开文件夹"), content);
+    m_folderLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    QToolButton *refreshButton = new QToolButton(content);
+    refreshButton->setText(tr("刷新"));
+    refreshButton->setToolTip(tr("重新扫描文件夹里的 Markdown 文件"));
+    header->addWidget(m_folderLabel, 1);
+    header->addWidget(refreshButton);
+    layout->addLayout(header);
+
+    m_fileList = new QListWidget(content);
+    m_fileList->setFrameShape(QFrame::NoFrame);
+    m_fileList->setUniformItemSizes(true);
+    m_fileList->setTextElideMode(Qt::ElideMiddle);
+    m_fileList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    layout->addWidget(m_fileList, 1);
+
+    m_sidebar->setWidget(content);
+    addDockWidget(Qt::LeftDockWidgetArea, m_sidebar);
+    resizeDocks({m_sidebar}, {250}, Qt::Horizontal);
+
+    connect(refreshButton, &QToolButton::clicked, this, &MainWindow::refreshFolder);
+    connect(m_fileList, &QListWidget::itemClicked, this, &MainWindow::openSidebarItem);
 }
 
 void MainWindow::createMenus()
@@ -176,6 +261,7 @@ void MainWindow::createMenus()
     QMenu *fileMenu = menuBar()->addMenu(tr("文件"));
     fileMenu->addAction(m_newAction);
     fileMenu->addAction(m_openAction);
+    fileMenu->addAction(m_openFolderAction);
     m_recentMenu = fileMenu->addMenu(tr("最近打开"));
     fileMenu->addSeparator();
     fileMenu->addAction(m_saveAction);
@@ -194,6 +280,9 @@ void MainWindow::createMenus()
     editMenu->addAction(m_selectAllAction);
 
     QMenu *viewMenu = menuBar()->addMenu(tr("视图"));
+    viewMenu->addAction(m_sidebarAction);
+    viewMenu->addAction(m_sourceModeAction);
+    viewMenu->addSeparator();
     viewMenu->addAction(m_wrapAction);
     viewMenu->addSeparator();
     viewMenu->addAction(m_zoomInAction);
@@ -208,7 +297,10 @@ void MainWindow::createMenus()
     m_themeSystemAction = new QAction(ThemeManager::modeLabel(ThemeManager::Mode::System), this);
     m_themeLightAction = new QAction(ThemeManager::modeLabel(ThemeManager::Mode::Light), this);
     m_themeDarkAction = new QAction(ThemeManager::modeLabel(ThemeManager::Mode::Dark), this);
-    for (QAction *action : {m_themeSystemAction, m_themeLightAction, m_themeDarkAction}) {
+    m_themeScheduleAction = new QAction(ThemeManager::modeLabel(ThemeManager::Mode::Schedule), this);
+    m_themeScheduleAction->setToolTip(tr("6:00–18:00 使用浅色，其余时间使用深色"));
+    for (QAction *action : {m_themeSystemAction, m_themeLightAction, m_themeDarkAction,
+                            m_themeScheduleAction}) {
         action->setCheckable(true);
         themeGroup->addAction(action);
         themeMenu->addAction(action);
@@ -221,6 +313,16 @@ void MainWindow::createMenus()
             [this] { applyThemeMode(static_cast<int>(ThemeManager::Mode::Light)); });
     connect(m_themeDarkAction, &QAction::triggered, this,
             [this] { applyThemeMode(static_cast<int>(ThemeManager::Mode::Dark)); });
+    connect(m_themeScheduleAction, &QAction::triggered, this,
+            [this] { applyThemeMode(static_cast<int>(ThemeManager::Mode::Schedule)); });
+
+    QMenu *formatMenu = menuBar()->addMenu(tr("格式"));
+    QMenu *headingMenu = formatMenu->addMenu(tr("标题"));
+    for (QAction *headingAction : m_headingActions) {
+        if (headingAction)
+            headingMenu->addAction(headingAction);
+    }
+    formatMenu->addAction(m_codeBlockAction);
 
     QMenu *helpMenu = menuBar()->addMenu(tr("帮助"));
     helpMenu->addAction(tr("关于 VoiletMark"), this, &MainWindow::showAbout);
@@ -228,10 +330,20 @@ void MainWindow::createMenus()
 
 void MainWindow::createStatusBar()
 {
+    // 左下角的 <src> 开关：切到源代码模式。
+    m_sourceButton = new QToolButton(this);
+    m_sourceButton->setText(QStringLiteral("<src>"));
+    m_sourceButton->setCheckable(true);
+    m_sourceButton->setCursor(Qt::PointingHandCursor);
+    m_sourceButton->setToolTip(tr("源代码模式：关闭语法高亮与行号（Ctrl+Shift+M）"));
+    statusBar()->addWidget(m_sourceButton);
+
     m_statusLabel = new QLabel(this);
     m_statusLabel->setContentsMargins(8, 0, 10, 0);
     statusBar()->addPermanentWidget(m_statusLabel);
     statusBar()->setSizeGripEnabled(false);
+
+    connect(m_sourceButton, &QToolButton::toggled, this, &MainWindow::setSourceModeEnabled);
 }
 
 void MainWindow::loadSettings()
@@ -259,6 +371,21 @@ void MainWindow::loadSettings()
     m_themeSystemAction->setChecked(mode == ThemeManager::Mode::System);
     m_themeLightAction->setChecked(mode == ThemeManager::Mode::Light);
     m_themeDarkAction->setChecked(mode == ThemeManager::Mode::Dark);
+    m_themeScheduleAction->setChecked(mode == ThemeManager::Mode::Schedule);
+
+    m_folderPath = settings.value(QStringLiteral("files/folder")).toString();
+    if (!m_folderPath.isEmpty() && QFileInfo(m_folderPath).isDir())
+        refreshFolder();
+    else
+        m_folderPath.clear();
+
+    const bool sidebarVisible =
+        settings.value(QStringLiteral("window/sidebarVisible"), true).toBool();
+    m_sidebar->setVisible(sidebarVisible);
+    m_sidebarAction->setChecked(sidebarVisible);
+
+    const bool sourceMode = settings.value(QStringLiteral("editor/sourceMode"), false).toBool();
+    setSourceModeEnabled(sourceMode);
 }
 
 void MainWindow::saveSettings()
@@ -269,6 +396,8 @@ void MainWindow::saveSettings()
     settings.setValue(QStringLiteral("editor/wordWrap"), m_wrapAction->isChecked());
     settings.setValue(QStringLiteral("files/lastDirectory"), m_lastDirectory);
     settings.setValue(QStringLiteral("files/recent"), m_recentFiles);
+    settings.setValue(QStringLiteral("files/folder"), m_folderPath);
+    settings.setValue(QStringLiteral("window/sidebarVisible"), m_sidebar->isVisible());
 }
 
 void MainWindow::closeEvent(QCloseEvent *event)
@@ -455,6 +584,7 @@ void MainWindow::setCurrentFile(const QString &path)
         setWindowFilePath(QString());
     }
     updateWindowTitle();
+    selectInSidebar(path);
 }
 
 void MainWindow::updateWindowTitle()
@@ -564,4 +694,134 @@ void MainWindow::refreshRecentMenu()
         QSettings().setValue(QStringLiteral("files/recent"), m_recentFiles);
         refreshRecentMenu();
     });
+}
+
+void MainWindow::chooseFolder()
+{
+    const QString directory = QFileDialog::getExistingDirectory(
+        this, tr("打开文件夹"), startDirectory(), QFileDialog::ShowDirsOnly);
+    if (!directory.isEmpty())
+        openFolder(directory);
+}
+
+void MainWindow::openFolder(const QString &path)
+{
+    const QFileInfo info(path);
+    if (!info.isDir())
+        return;
+
+    m_folderPath = info.absoluteFilePath();
+    m_lastDirectory = m_folderPath;
+    QSettings().setValue(QStringLiteral("files/folder"), m_folderPath);
+    refreshFolder();
+
+    m_sidebar->setVisible(true);
+    m_sidebarAction->setChecked(true);
+}
+
+void MainWindow::refreshFolder()
+{
+    if (!m_fileList)
+        return;
+
+    m_fileList->clear();
+
+    if (m_folderPath.isEmpty() || !QFileInfo(m_folderPath).isDir()) {
+        m_folderLabel->setText(tr("未打开文件夹"));
+        m_folderLabel->setToolTip(tr("文件 → 打开文件夹…"));
+        return;
+    }
+
+    const QDir root(m_folderPath);
+    m_folderLabel->setText(root.dirName().isEmpty() ? m_folderPath : root.dirName());
+    m_folderLabel->setToolTip(QDir::toNativeSeparators(m_folderPath));
+
+    QStringList files;
+    QDirIterator iterator(m_folderPath,
+                          {QStringLiteral("*.md"), QStringLiteral("*.markdown"),
+                           QStringLiteral("*.mdown"), QStringLiteral("*.mkd")},
+                          QDir::Files, QDirIterator::Subdirectories);
+    while (iterator.hasNext()) {
+        const QString filePath = iterator.next();
+        const QString relative = root.relativeFilePath(filePath);
+        if (relative.startsWith(QLatin1Char('.')) || relative.contains(QLatin1String("/.")))
+            continue;
+        files.append(filePath);
+    }
+
+    std::sort(files.begin(), files.end(), [&root](const QString &left, const QString &right) {
+        return root.relativeFilePath(left).compare(root.relativeFilePath(right),
+                                                   Qt::CaseInsensitive) < 0;
+    });
+
+    for (const QString &filePath : files) {
+        QListWidgetItem *item = new QListWidgetItem(root.relativeFilePath(filePath), m_fileList);
+        item->setData(Qt::UserRole, filePath);
+        item->setToolTip(QDir::toNativeSeparators(filePath));
+    }
+
+    if (files.isEmpty()) {
+        QListWidgetItem *empty = new QListWidgetItem(tr("（没有 Markdown 文件）"), m_fileList);
+        empty->setFlags(Qt::NoItemFlags);
+    }
+
+    selectInSidebar(m_currentPath);
+}
+
+void MainWindow::openSidebarItem(QListWidgetItem *item)
+{
+    if (!item)
+        return;
+
+    const QString path = item->data(Qt::UserRole).toString();
+    if (path.isEmpty())
+        return;
+
+    if (!m_currentPath.isEmpty()
+        && QFileInfo(path).absoluteFilePath() == QFileInfo(m_currentPath).absoluteFilePath()
+        && !m_editor->document()->isModified()) {
+        return;
+    }
+    openPath(path);
+}
+
+void MainWindow::selectInSidebar(const QString &path)
+{
+    if (!m_fileList || m_fileList->count() == 0)
+        return;
+
+    const QString absolute = path.isEmpty() ? QString() : QFileInfo(path).absoluteFilePath();
+    if (!absolute.isEmpty()) {
+        for (int index = 0; index < m_fileList->count(); ++index) {
+            QListWidgetItem *item = m_fileList->item(index);
+            const QString itemPath = item->data(Qt::UserRole).toString();
+            if (itemPath.isEmpty())
+                continue;
+            if (QFileInfo(itemPath).absoluteFilePath() == absolute) {
+                m_fileList->setCurrentItem(item);
+                m_fileList->scrollToItem(item);
+                return;
+            }
+        }
+    }
+
+    m_fileList->clearSelection();
+    m_fileList->setCurrentItem(nullptr);
+}
+
+void MainWindow::setSourceModeEnabled(bool enabled)
+{
+    m_editor->setSourceMode(enabled);
+
+    if (m_sourceButton) {
+        const QSignalBlocker blocker(m_sourceButton);
+        m_sourceButton->setChecked(enabled);
+        m_sourceButton->setText(enabled ? QStringLiteral("</src>") : QStringLiteral("<src>"));
+    }
+    if (m_sourceModeAction) {
+        const QSignalBlocker blocker(m_sourceModeAction);
+        m_sourceModeAction->setChecked(enabled);
+    }
+
+    QSettings().setValue(QStringLiteral("editor/sourceMode"), enabled);
 }
