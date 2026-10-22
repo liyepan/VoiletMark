@@ -55,6 +55,7 @@ private:
     QTextCharFormat m_boldItalicFormat;
     QTextCharFormat m_emphasisFormat;
     QTextCharFormat m_codeFormat;
+    QTextCharFormat m_fenceFormat;
     QTextCharFormat m_linkFormat;
     QTextCharFormat m_urlFormat;
     QTextCharFormat m_quoteFormat;

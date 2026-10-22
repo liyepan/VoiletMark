@@ -97,6 +97,12 @@ void MarkdownHighlighter::rebuildFormats()
     m_codeFormat.setFontFamilies(monospaceFamilies());
     m_codeFormat.setFontFixedPitch(true);
 
+    // 围栏代码块：等宽、普通文字色，不带底色——外面由编辑器画框。
+    m_fenceFormat = QTextCharFormat();
+    m_fenceFormat.setFontFamilies(monospaceFamilies());
+    m_fenceFormat.setFontFixedPitch(true);
+    m_fenceFormat.setForeground(c.editorText);
+
     m_linkFormat = QTextCharFormat();
     m_linkFormat.setForeground(c.link);
     m_linkFormat.setFontUnderline(true);
@@ -198,8 +204,13 @@ void MarkdownHighlighter::highlightBlock(const QString &text)
     if (inFence) {
         if (!fenceLine)
             setCurrentBlockState(StateInFence);
-        if (rendered && fenceLine && !active) {
-            apply(0, text.length(), hiddenFormat(c.editorBase));
+        if (rendered) {
+            if (fenceLine && !active) {
+                apply(0, text.length(), hiddenFormat(c.editorBase));
+            } else {
+                m_blockBase = m_fenceFormat;
+                apply(0, text.length(), m_fenceFormat);
+            }
         } else {
             m_blockBase = m_codeFormat;
             apply(0, text.length(), m_codeFormat);
@@ -208,10 +219,14 @@ void MarkdownHighlighter::highlightBlock(const QString &text)
     }
     if (fenceLine) {
         setCurrentBlockState(StateInFence);
-        if (rendered && !active)
-            apply(0, text.length(), hiddenFormat(c.editorBase));
-        else
+        if (rendered) {
+            if (!active)
+                apply(0, text.length(), hiddenFormat(c.editorBase));
+            else
+                apply(0, text.length(), m_fenceFormat);
+        } else {
             apply(0, text.length(), m_codeFormat);
+        }
         return;
     }
 

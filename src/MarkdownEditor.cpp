@@ -4,12 +4,15 @@
 #include "ThemeManager.h"
 
 #include <QAbstractTextDocumentLayout>
+#include <QClipboard>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QFileInfo>
 #include <QFontDatabase>
 #include <QFontMetricsF>
+#include <QGuiApplication>
 #include <QKeyEvent>
+#include <QMouseEvent>
 #include <QMimeData>
 #include <QPainter>
 #include <QPaintEvent>
@@ -17,6 +20,7 @@
 #include <QTextBlock>
 #include <QTextCursor>
 #include <QTextOption>
+#include <QTimer>
 #include <QUrl>
 #include <QWheelEvent>
 
@@ -88,6 +92,7 @@ MarkdownEditor::MarkdownEditor(QWidget *parent)
     setLineWrapMode(QPlainTextEdit::WidgetWidth);
     setCursorWidth(2);
     setAcceptDrops(true);
+    viewport()->setMouseTracking(true);
     document()->setDocumentMargin(18);
 
     m_lineNumberArea = new LineNumberArea(this);
@@ -106,9 +111,16 @@ MarkdownEditor::MarkdownEditor(QWidget *parent)
     connect(ThemeManager::instance(), &ThemeManager::schemeChanged,
             this, &MarkdownEditor::applyTheme);
 
+    m_fenceTimer = new QTimer(this);
+    m_fenceTimer->setSingleShot(true);
+    m_fenceTimer->setInterval(120);
+    connect(m_fenceTimer, &QTimer::timeout, this, &MarkdownEditor::rebuildCodeFences);
+    connect(this, &QPlainTextEdit::textChanged, this, [this] { m_fenceTimer->start(); });
+
     m_lineNumberArea->setVisible(m_sourceMode);
     applyEditorFont();
     updateCurrentLineHighlight();
+    rebuildCodeFences();
 }
 
 int MarkdownEditor::lineNumberAreaWidth() const
@@ -483,27 +495,181 @@ void MarkdownEditor::resizeEvent(QResizeEvent *event)
 void MarkdownEditor::paintEvent(QPaintEvent *event)
 {
     QPlainTextEdit::paintEvent(event);
-    if (!m_sourceMode)
+
+    QPainter painter(viewport());
+
+    if (m_sourceMode) {
+        // 源代码模式：每行底下画一条极细的分隔线，像稿纸一样。
+        QColor lineColor = ThemeManager::instance()->colors().border;
+        lineColor.setAlpha(120);
+        painter.setPen(lineColor);
+
+        QTextBlock block = firstVisibleBlock();
+        int top = qRound(blockBoundingGeometry(block).translated(contentOffset()).top());
+        int bottom = top + qRound(blockBoundingRect(block).height());
+        const int width = viewport()->width();
+
+        while (block.isValid() && top <= event->rect().bottom()) {
+            if (block.isVisible() && bottom >= event->rect().top())
+                painter.drawLine(0, bottom - 1, width, bottom - 1);
+            block = block.next();
+            top = bottom;
+            bottom = top + qRound(blockBoundingRect(block).height());
+        }
+        return;
+    }
+
+    // 编辑模式：代码块套一个圆角框，右上角给个复制按钮。
+    const ThemeColors &colors = ThemeManager::instance()->colors();
+    const QRectF visible(event->rect());
+
+    for (int index = 0; index < m_codeFences.size(); ++index) {
+        const QRectF rect = codeFenceRect(index);
+        if (!rect.isValid() || !rect.intersects(visible))
+            continue;
+
+        painter.setBrush(Qt::NoBrush);
+        painter.setPen(QPen(colors.border, 1));
+        painter.drawRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), 6, 6);
+
+        const QRectF button = copyButtonRect(index);
+        if (!button.isValid())
+            continue;
+
+        QFont small = font();
+        small.setPointSizeF(qMax(7.0, font().pointSizeF() - 2.0));
+        painter.setFont(small);
+
+        const bool hovered = (m_hoveredFence == index);
+        const bool copied = (m_copiedFence == index);
+        painter.setPen(QPen(hovered ? colors.accent : colors.border, 1));
+        painter.setBrush(colors.editorBase);
+        painter.drawRoundedRect(button, 4, 4);
+        painter.setPen(copied ? colors.accent : colors.placeholder);
+        painter.drawText(button, Qt::AlignCenter, copied ? tr("已复制") : tr("复制"));
+    }
+}
+
+QRectF MarkdownEditor::codeFenceRect(int index) const
+{
+    if (index < 0 || index >= m_codeFences.size())
+        return QRectF();
+
+    const CodeFence &fence = m_codeFences.at(index);
+    const QTextBlock first = document()->findBlockByNumber(fence.open);
+    const int lastNumber = fence.close >= 0 ? fence.close : document()->blockCount() - 1;
+    const QTextBlock last = document()->findBlockByNumber(lastNumber);
+    if (!first.isValid() || !last.isValid())
+        return QRectF();
+
+    const QRectF firstRect = blockBoundingGeometry(first).translated(contentOffset());
+    const QRectF lastRect = blockBoundingGeometry(last).translated(contentOffset());
+    const qreal top = firstRect.top() - 3;
+    const qreal bottom = lastRect.bottom() + 3;
+    return QRectF(3, top, viewport()->width() - 6, bottom - top);
+}
+
+QRectF MarkdownEditor::copyButtonRect(int index) const
+{
+    const QRectF rect = codeFenceRect(index);
+    if (!rect.isValid())
+        return QRectF();
+
+    QFont small = font();
+    small.setPointSizeF(qMax(7.0, font().pointSizeF() - 2.0));
+    const QFontMetricsF metrics(small);
+    const QString label = (m_copiedFence == index) ? tr("已复制") : tr("复制");
+    const qreal width = metrics.horizontalAdvance(label) + 16;
+    const qreal height = metrics.height() + 6;
+    return QRectF(rect.right() - width - 8, rect.top() + 6, width, height);
+}
+
+QString MarkdownEditor::codeFenceText(int index) const
+{
+    if (index < 0 || index >= m_codeFences.size())
+        return QString();
+
+    const CodeFence &fence = m_codeFences.at(index);
+    const int end = fence.close >= 0 ? fence.close : document()->blockCount();
+    QStringList lines;
+    for (int number = fence.open + 1; number < end; ++number)
+        lines << document()->findBlockByNumber(number).text();
+    return lines.join(QLatin1Char('\n'));
+}
+
+void MarkdownEditor::rebuildCodeFences()
+{
+    m_codeFences.clear();
+    if (!document())
         return;
 
-    // 源代码模式：每行底下画一条极细的分隔线，像稿纸一样。
-    QPainter painter(viewport());
-    QColor lineColor = ThemeManager::instance()->colors().border;
-    lineColor.setAlpha(120);
-    painter.setPen(lineColor);
+    static const QRegularExpression fencePattern(QStringLiteral("^\\s{0,3}(?:```|~~~)"));
+    bool inFence = false;
+    int open = -1;
 
-    QTextBlock block = firstVisibleBlock();
-    int top = qRound(blockBoundingGeometry(block).translated(contentOffset()).top());
-    int bottom = top + qRound(blockBoundingRect(block).height());
-    const int width = viewport()->width();
-
-    while (block.isValid() && top <= event->rect().bottom()) {
-        if (block.isVisible() && bottom >= event->rect().top())
-            painter.drawLine(0, bottom - 1, width, bottom - 1);
-        block = block.next();
-        top = bottom;
-        bottom = top + qRound(blockBoundingRect(block).height());
+    for (QTextBlock block = document()->firstBlock(); block.isValid(); block = block.next()) {
+        if (!fencePattern.match(block.text()).hasMatch())
+            continue;
+        if (!inFence) {
+            inFence = true;
+            open = block.blockNumber();
+        } else {
+            CodeFence fence;
+            fence.open = open;
+            fence.close = block.blockNumber();
+            m_codeFences.append(fence);
+            inFence = false;
+            open = -1;
+        }
     }
+    if (inFence && open >= 0) {
+        CodeFence fence;
+        fence.open = open;
+        m_codeFences.append(fence);
+    }
+
+    viewport()->update();
+}
+
+void MarkdownEditor::mouseMoveEvent(QMouseEvent *event)
+{
+    QPlainTextEdit::mouseMoveEvent(event);
+    if (m_sourceMode)
+        return;
+
+    int hovered = -1;
+    for (int index = 0; index < m_codeFences.size(); ++index) {
+        if (copyButtonRect(index).contains(event->pos())) {
+            hovered = index;
+            break;
+        }
+    }
+
+    if (hovered != m_hoveredFence) {
+        m_hoveredFence = hovered;
+        viewport()->setCursor(hovered >= 0 ? Qt::PointingHandCursor : Qt::IBeamCursor);
+        viewport()->update();
+    }
+}
+
+void MarkdownEditor::mousePressEvent(QMouseEvent *event)
+{
+    if (!m_sourceMode && event->button() == Qt::LeftButton) {
+        for (int index = 0; index < m_codeFences.size(); ++index) {
+            if (!copyButtonRect(index).contains(event->pos()))
+                continue;
+
+            QGuiApplication::clipboard()->setText(codeFenceText(index));
+            m_copiedFence = index;
+            QTimer::singleShot(1200, this, [this] {
+                m_copiedFence = -1;
+                viewport()->update();
+            });
+            viewport()->update();
+            return;
+        }
+    }
+    QPlainTextEdit::mousePressEvent(event);
 }
 
 void MarkdownEditor::keyPressEvent(QKeyEvent *event)

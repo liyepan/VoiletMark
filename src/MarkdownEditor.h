@@ -1,9 +1,11 @@
 #pragma once
 
 #include <QPlainTextEdit>
+#include <QVector>
 
 class MarkdownHighlighter;
 class QTextBlock;
+class QTimer;
 
 /// 编辑器本体：等宽字体、行号栏、当前行高亮、Tab 缩进、
 /// Ctrl+滚轮缩放，以及把拖入的文件转交给主窗口打开。
@@ -42,6 +44,8 @@ signals:
 protected:
     void resizeEvent(QResizeEvent *event) override;
     void paintEvent(QPaintEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
+    void mousePressEvent(QMouseEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
     void dragEnterEvent(QDragEnterEvent *event) override;
@@ -54,20 +58,34 @@ private slots:
     void updateCurrentLineHighlight();
     void updateActiveBlock();
     void applyTheme();
+    void rebuildCodeFences();
 
 private:
     void applyEditorFont();
     void updateViewportMargins();
     void indentSelection(bool outdent);
+    QRectF codeFenceRect(int index) const;
+    QRectF copyButtonRect(int index) const;
+    QString codeFenceText(int index) const;
     bool acceptsLocalFiles(const QMimeData *mime) const;
     void selectedBlockRange(int *firstBlock, int *lastBlock) const;
     void selectBlocks(int firstBlock, int lastBlock);
     bool enclosingFence(int firstBlock, int lastBlock,
                         QTextBlock *opener, QTextBlock *closer) const;
 
+    struct CodeFence {
+        int open = -1;   // 开围栏所在行
+        int close = -1;  // 闭围栏所在行，未闭合时为 -1
+    };
+
     QWidget *m_lineNumberArea = nullptr;
     MarkdownHighlighter *m_highlighter = nullptr;
     int m_fontPointSize = 12;
     bool m_sourceMode = false;
     int m_activeBlock = -1;
+
+    QVector<CodeFence> m_codeFences;
+    QTimer *m_fenceTimer = nullptr;
+    int m_hoveredFence = -1;
+    int m_copiedFence = -1;
 };
