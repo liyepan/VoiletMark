@@ -1,6 +1,6 @@
 TEMPLATE = app
 TARGET   = VoiletMark
-VERSION  = 0.8.2
+VERSION  = 0.9.0
 
 QT += core gui widgets printsupport
 
@@ -24,6 +24,7 @@ SOURCES += \
     src/MarkdownHighlighter.cpp \
     src/MarkdownRenderer.cpp \
     src/CodeHighlight.cpp \
+    src/GitRunner.cpp \
     src/LanguageManager.cpp \
     src/ThemeManager.cpp
 
@@ -33,6 +34,7 @@ HEADERS += \
     src/MarkdownHighlighter.h \
     src/MarkdownRenderer.h \
     src/CodeHighlight.h \
+    src/GitRunner.h \
     src/LanguageManager.h \
     src/ThemeManager.h
 

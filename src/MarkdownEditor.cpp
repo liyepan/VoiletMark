@@ -594,7 +594,7 @@ QRectF MarkdownEditor::languageRect(int index) const
     const QString label = languageLabel(index) + QStringLiteral(" \u25be");
     const qreal width = metrics.horizontalAdvance(label) + 16;
     const qreal height = metrics.height() + 6;
-    return QRectF(rect.left() + 8, rect.top() + 6, width, height);
+    return QRectF(rect.right() - width - 8, rect.bottom() - height - 6, width, height);
 }
 
 QString MarkdownEditor::languageLabel(int index) const

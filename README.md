@@ -2,7 +2,7 @@
 
 一个轻量的跨平台 Markdown 编辑器，基于 **Qt 5 / C++17** 构建。
 
-当前版本 **0.8.1**。
+当前版本 **0.9.0**。
 
 ## 界面
 
@@ -44,6 +44,27 @@
 - 点文件名即打开，当前文件在列表里高亮
 - 每 5 秒自动扫描一次：目录里新增 / 删除的 Markdown 会自动出现在列表里
 - 上次打开的文件夹会被记住，下次启动自动恢复
+
+### Git
+
+打开的文件夹如果是个 git 仓库，侧栏底部会出现一行 Git 工具条（显示当前分支）：
+
+| 按钮 | 实际执行 |
+| --- | --- |
+| 拉取 | `git pull --ff-only` |
+| 获取 | `git fetch --all --prune` |
+| 推送 | `git push` |
+| 暂存 | `git add -A` |
+| 提交 | 填说明后 `git commit -m` |
+
+右键侧栏里的文件还有两项：
+
+- **添加到提交** → `git add -- <file>`
+- **忽略（并从远端删除）** → 写进 `.gitignore` + `git rm --cached` + 提交 + 推送。
+  **远端会真的删掉这个文件**，所以点之前会弹确认框，把要执行的命令逐条列出来；
+  本地文件保留。
+
+所有命令都是异步跑的，不会卡界面；失败时弹窗显示 git 的原始输出。
 
 ### 编辑模式 / 源代码模式
 
@@ -195,16 +216,19 @@ VoiletMark --screenshot a.png  # 渲染窗口截图后退出（调试 / 视觉�
 
 ```
 src/
-├── main.cpp               入口：命令行解析、Fusion 样式、主题初始化
+├── main.cpp               入口：命令行解析、Fusion 样式、主题 / 语言初始化
 ├── ThemeManager.{h,cpp}   四种主题模式 + 系统检测 + 调色板 / QSS 生成
-├── MainWindow.{h,cpp}     菜单、文件读写、文件夹侧栏、状态栏、设置
-├── MarkdownEditor.{h,cpp} 编辑器控件：行号、缩进、标题 / 代码块命令、源码模式
-├── MarkdownHighlighter.{h,cpp}  Markdown 着色与就地渲染（隐藏标记、标题缩放）
-├── MarkdownRenderer.{h,cpp}     导出用的 Markdown → 富文本文档转换
-└── ExportDialog.{h,cpp}         PDF 预览与保存对话框
+├── LanguageManager.{h,cpp} 中英文切换
+├── MainWindow.{h,cpp}     菜单、文件读写、侧栏、Git 工具栏、状态栏、设置
+├── MarkdownEditor.{h,cpp} 编辑器控件：行号、缩进、代码框装饰、源码模式
+├── MarkdownHighlighter.{h,cpp}  Markdown 着色与就地渲染
+├── CodeHighlight.{h,cpp}  多语言语法高亮 tokenizer
+├── MarkdownRenderer.{h,cpp} 导出用的 Markdown → 富文本文档转换
+└── GitRunner.{h,cpp}      异步执行 git 命令
 
 logo.png              图标源文件
-resources.qrc         窗口图标资源
+resources.qrc         窗口图标与翻译资源
+translations/         中英文翻译（.ts / .qm）
 packaging/            各平台图标（ico / icns / png）与 .desktop
 ```
 

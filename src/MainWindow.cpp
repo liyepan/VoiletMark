@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 
+#include "GitRunner.h"
 #include "LanguageManager.h"
 #include "MarkdownEditor.h"
 #include "MarkdownRenderer.h"
@@ -16,7 +17,9 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFrame>
+#include <QGridLayout>
 #include <QHBoxLayout>
+#include <QInputDialog>
 #include <QLabel>
 #include <QListWidget>
 #include <QMenu>
@@ -25,13 +28,16 @@
 #include <QPageLayout>
 #include <QPageSize>
 #include <QPixmap>
+#include <QProcess>
 #include <QPrinter>
+#include <QPushButton>
 #include <QSaveFile>
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QStandardPaths>
 #include <QStatusBar>
 #include <QTextBlock>
+#include <QTextStream>
 #include <QTextCursor>
 #include <QTextDocument>
 #include <QTimer>
@@ -140,6 +146,9 @@ MainWindow::MainWindow(QWidget *parent)
 
     m_editor = new MarkdownEditor(this);
     setCentralWidget(m_editor);
+
+    m_git = new GitRunner(this);
+    connect(m_git, &GitRunner::finished, this, &MainWindow::onGitFinished);
 
     createActions();
     createSidebar();
@@ -298,7 +307,49 @@ void MainWindow::createSidebar()
     m_fileList->setUniformItemSizes(true);
     m_fileList->setTextElideMode(Qt::ElideMiddle);
     m_fileList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_fileList->setContextMenuPolicy(Qt::CustomContextMenu);
     layout->addWidget(m_fileList, 1);
+
+    // ---- Git 工具条：只有打开的是仓库时才显示 ----
+    m_gitBar = new QWidget(content);
+    QGridLayout *gitLayout = new QGridLayout(m_gitBar);
+    gitLayout->setContentsMargins(0, 2, 0, 0);
+    gitLayout->setSpacing(4);
+
+    m_gitStatusLabel = new QLabel(tr("Git 仓库"), m_gitBar);
+    m_gitStatusLabel->setForegroundRole(QPalette::PlaceholderText);
+    gitLayout->addWidget(m_gitStatusLabel, 0, 0, 1, 3);
+
+    auto makeGitButton = [this](const QString &text, const QString &tip) {
+        QPushButton *button = new QPushButton(text, m_gitBar);
+        button->setToolTip(tip);
+        button->setCursor(Qt::PointingHandCursor);
+        button->setStyleSheet(QStringLiteral("padding: 3px 6px; min-width: 0;"));
+        return button;
+    };
+
+    m_gitPullButton = makeGitButton(tr("拉取"), tr("git pull --ff-only"));
+    m_gitFetchButton = makeGitButton(tr("获取"), tr("git fetch --all --prune"));
+    m_gitPushButton = makeGitButton(tr("推送"), tr("git push"));
+    m_gitStageButton = makeGitButton(tr("暂存"), tr("git add -A"));
+    m_gitCommitButton = makeGitButton(tr("提交"), tr("把暂存区的内容提交"));
+
+    gitLayout->addWidget(m_gitPullButton, 1, 0);
+    gitLayout->addWidget(m_gitFetchButton, 1, 1);
+    gitLayout->addWidget(m_gitPushButton, 1, 2);
+    gitLayout->addWidget(m_gitStageButton, 2, 0);
+    gitLayout->addWidget(m_gitCommitButton, 2, 1, 1, 2);
+
+    layout->addWidget(m_gitBar);
+    m_gitBar->setVisible(false);
+
+    connect(m_gitPullButton, &QPushButton::clicked, this, &MainWindow::gitPull);
+    connect(m_gitFetchButton, &QPushButton::clicked, this, &MainWindow::gitFetch);
+    connect(m_gitPushButton, &QPushButton::clicked, this, &MainWindow::gitPush);
+    connect(m_gitStageButton, &QPushButton::clicked, this, &MainWindow::gitStageAll);
+    connect(m_gitCommitButton, &QPushButton::clicked, this, &MainWindow::gitCommit);
+    connect(m_fileList, &QListWidget::customContextMenuRequested,
+            this, &MainWindow::showFileContextMenu);
 
     m_sidebar->setWidget(content);
     addDockWidget(Qt::LeftDockWidgetArea, m_sidebar);
@@ -470,6 +521,8 @@ void MainWindow::loadSettings()
 
     const bool sourceMode = settings.value(QStringLiteral("editor/sourceMode"), false).toBool();
     setSourceModeEnabled(sourceMode);
+
+    updateGitState();
 }
 
 void MainWindow::saveSettings()
@@ -921,6 +974,7 @@ void MainWindow::openFolder(const QString &path)
     m_lastDirectory = m_folderPath;
     QSettings().setValue(QStringLiteral("files/folder"), m_folderPath);
     refreshFolder();
+    updateGitState();
 
     m_sidebar->setVisible(true);
     m_sidebarAction->setChecked(true);
@@ -1062,3 +1116,241 @@ void MainWindow::setSourceModeEnabled(bool enabled)
 
     QSettings().setValue(QStringLiteral("editor/sourceMode"), enabled);
 }
+
+// ---------------------------------------------------------------- Git
+
+void MainWindow::updateGitState()
+{
+    m_gitRoot.clear();
+    m_gitBranch.clear();
+
+    if (!m_folderPath.isEmpty() && QFileInfo(m_folderPath).isDir()) {
+        QProcess process;
+        process.setWorkingDirectory(m_folderPath);
+        process.start(QStringLiteral("git"),
+                      {QStringLiteral("rev-parse"), QStringLiteral("--show-toplevel")});
+        if (process.waitForFinished(3000) && process.exitCode() == 0)
+            m_gitRoot = QString::fromLocal8Bit(process.readAllStandardOutput()).trimmed();
+    }
+
+    if (!m_gitRoot.isEmpty()) {
+        QProcess branch;
+        branch.setWorkingDirectory(m_gitRoot);
+        branch.start(QStringLiteral("git"), {QStringLiteral("rev-parse"),
+                                             QStringLiteral("--abbrev-ref"),
+                                             QStringLiteral("HEAD")});
+        if (branch.waitForFinished(3000) && branch.exitCode() == 0)
+            m_gitBranch = QString::fromLocal8Bit(branch.readAllStandardOutput()).trimmed();
+    }
+
+    if (m_git)
+        m_git->setWorkingDirectory(m_gitRoot.isEmpty() ? m_folderPath : m_gitRoot);
+
+    if (m_gitBar) {
+        m_gitBar->setVisible(!m_gitRoot.isEmpty());
+        m_gitStatusLabel->setText(m_gitBranch.isEmpty() ? tr("Git 仓库") : m_gitBranch);
+        m_gitStatusLabel->setToolTip(m_gitRoot);
+    }
+}
+
+void MainWindow::setGitBusy(bool busy)
+{
+    m_gitBusy = busy;
+    const QList<QPushButton *> buttons = {m_gitPullButton, m_gitFetchButton, m_gitPushButton,
+                                          m_gitStageButton, m_gitCommitButton};
+    for (QPushButton *button : buttons) {
+        if (button)
+            button->setEnabled(!busy);
+    }
+}
+
+void MainWindow::enqueueGit(const QStringList &arguments, const QString &label)
+{
+    GitStep step;
+    step.arguments = arguments;
+    step.label = label;
+    m_gitQueue.enqueue(step);
+    if (!m_gitBusy)
+        runNextGit();
+}
+
+void MainWindow::runNextGit()
+{
+    if (m_gitQueue.isEmpty()) {
+        setGitBusy(false);
+        statusBar()->clearMessage();
+        return;
+    }
+
+    const GitStep step = m_gitQueue.dequeue();
+    setGitBusy(true);
+    statusBar()->showMessage(tr("正在%1…").arg(step.label));
+    m_git->run(step.arguments, step.label);
+}
+
+void MainWindow::onGitFinished(bool ok, const QString &label, const QString &output)
+{
+    if (!ok) {
+        m_gitQueue.clear();
+        setGitBusy(false);
+        statusBar()->clearMessage();
+        QMessageBox::warning(this, tr("Git 操作失败"),
+                             tr("%1失败：\n\n%2")
+                                 .arg(label, output.isEmpty() ? tr("（没有输出）") : output));
+        return;
+    }
+
+    if (m_gitQueue.isEmpty()) {
+        setGitBusy(false);
+        statusBar()->showMessage(tr("%1完成").arg(label), 3000);
+        refreshFolder();
+    } else {
+        runNextGit();
+    }
+}
+
+void MainWindow::gitPull()
+{
+    if (m_gitRoot.isEmpty())
+        return;
+    enqueueGit({QStringLiteral("pull"), QStringLiteral("--ff-only")}, tr("拉取"));
+}
+
+void MainWindow::gitFetch()
+{
+    if (m_gitRoot.isEmpty())
+        return;
+    enqueueGit({QStringLiteral("fetch"), QStringLiteral("--all"), QStringLiteral("--prune")},
+               tr("获取"));
+}
+
+void MainWindow::gitPush()
+{
+    if (m_gitRoot.isEmpty())
+        return;
+    enqueueGit({QStringLiteral("push")}, tr("推送"));
+}
+
+void MainWindow::gitStageAll()
+{
+    if (m_gitRoot.isEmpty())
+        return;
+    enqueueGit({QStringLiteral("add"), QStringLiteral("-A")}, tr("暂存"));
+}
+
+void MainWindow::gitCommit()
+{
+    if (m_gitRoot.isEmpty())
+        return;
+
+    QProcess staged;
+    staged.setWorkingDirectory(m_gitRoot);
+    staged.start(QStringLiteral("git"), {QStringLiteral("diff"), QStringLiteral("--cached"),
+                                         QStringLiteral("--quiet")});
+    if (staged.waitForFinished(5000) && staged.exitCode() == 0) {
+        QMessageBox::information(this, tr("提交"),
+                                 tr("暂存区是空的，先点「暂存」把所有改动加进去。"));
+        return;
+    }
+
+    bool ok = false;
+    const QString message = QInputDialog::getMultiLineText(
+        this, tr("提交"), tr("提交说明："), QString(), &ok);
+    if (!ok || message.trimmed().isEmpty())
+        return;
+
+    enqueueGit({QStringLiteral("commit"), QStringLiteral("-m"), message.trimmed()}, tr("提交"));
+}
+
+void MainWindow::gitAddFile(const QString &path)
+{
+    if (m_gitRoot.isEmpty())
+        return;
+    const QString relative = QDir(m_gitRoot).relativeFilePath(path);
+    enqueueGit({QStringLiteral("add"), QStringLiteral("--"), relative}, tr("添加到提交"));
+}
+
+void MainWindow::gitIgnoreFile(const QString &path)
+{
+    if (m_gitRoot.isEmpty())
+        return;
+
+    const QString relative = QDir(m_gitRoot).relativeFilePath(path);
+
+    QMessageBox box(QMessageBox::Warning, tr("忽略文件"),
+                    tr("忽略「%1」？\n\n"
+                       "会依次执行：\n"
+                       "1. 把路径写进 .gitignore\n"
+                       "2. git rm --cached（从仓库移除，本地文件保留）\n"
+                       "3. 提交并推送到远端——远端也会删掉这个文件\n\n"
+                       "其他人 pull 之后，本地的那份也会被删掉。")
+                        .arg(relative),
+                    QMessageBox::NoButton, this);
+    QPushButton *confirm = box.addButton(tr("忽略并删除远端"), QMessageBox::AcceptRole);
+    box.addButton(tr("取消"), QMessageBox::RejectRole);
+    box.exec();
+    if (box.clickedButton() != confirm)
+        return;
+
+    const QString ignorePath = QDir(m_gitRoot).filePath(QStringLiteral(".gitignore"));
+    QStringList lines;
+    QFile ignoreFile(ignorePath);
+    if (ignoreFile.open(QIODevice::ReadOnly | QIODevice::Text))
+        lines = QString::fromUtf8(ignoreFile.readAll()).split(QLatin1Char('\n'));
+    ignoreFile.close();
+
+    bool listed = false;
+    for (const QString &line : lines) {
+        if (line.trimmed() == relative) {
+            listed = true;
+            break;
+        }
+    }
+    if (!listed) {
+        if (ignoreFile.open(QIODevice::Append | QIODevice::Text)) {
+            QTextStream stream(&ignoreFile);
+            stream << relative << "\n";
+            ignoreFile.close();
+        }
+    }
+
+    bool tracked = false;
+    QProcess check;
+    check.setWorkingDirectory(m_gitRoot);
+    check.start(QStringLiteral("git"), {QStringLiteral("ls-files"), QStringLiteral("--error-unmatch"),
+                                        QStringLiteral("--"), relative});
+    if (check.waitForFinished(5000))
+        tracked = (check.exitCode() == 0);
+
+    if (tracked)
+        enqueueGit({QStringLiteral("rm"), QStringLiteral("--cached"), QStringLiteral("--"), relative},
+                   tr("从仓库移除"));
+    enqueueGit({QStringLiteral("add"), QStringLiteral("--"), QStringLiteral(".gitignore")},
+               tr("更新忽略列表"));
+    enqueueGit({QStringLiteral("commit"), QStringLiteral("-m"),
+                tr("chore: 忽略 %1").arg(relative)},
+               tr("提交"));
+    enqueueGit({QStringLiteral("push")}, tr("推送"));
+}
+
+void MainWindow::showFileContextMenu(const QPoint &pos)
+{
+    QListWidgetItem *item = m_fileList->itemAt(pos);
+    if (!item)
+        return;
+    const QString path = item->data(Qt::UserRole).toString();
+    if (path.isEmpty())
+        return;
+
+    QMenu menu(this);
+    menu.addAction(tr("打开"), this, [this, path] { openPath(path); });
+
+    if (!m_gitRoot.isEmpty()) {
+        menu.addSeparator();
+        menu.addAction(tr("添加到提交"), this, [this, path] { gitAddFile(path); });
+        menu.addAction(tr("忽略（并从远端删除）"), this, [this, path] { gitIgnoreFile(path); });
+    }
+
+    menu.exec(m_fileList->viewport()->mapToGlobal(pos));
+}
+

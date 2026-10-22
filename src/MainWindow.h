@@ -1,12 +1,15 @@
 #pragma once
 
 #include <QMainWindow>
+#include <QQueue>
 #include <QStringList>
 
 class QAction;
 class QActionGroup;
 class QDockWidget;
 class QLabel;
+class QPushButton;
+class GitRunner;
 class QListWidget;
 class QListWidgetItem;
 class QMenu;
@@ -58,6 +61,21 @@ private:
     void setSourceModeEnabled(bool enabled);
     void exportPdf();
 
+    // ---- Git ----
+    void updateGitState();
+    void showFileContextMenu(const QPoint &pos);
+    void gitAddFile(const QString &path);
+    void gitIgnoreFile(const QString &path);
+    void gitCommit();
+    void gitPull();
+    void gitFetch();
+    void gitPush();
+    void gitStageAll();
+    void enqueueGit(const QStringList &arguments, const QString &label);
+    void runNextGit();
+    void onGitFinished(bool ok, const QString &label, const QString &output);
+    void setGitBusy(bool busy);
+
     void changeZoom(int direction);
     void resetZoom();
     void setWordWrapEnabled(bool enabled);
@@ -81,6 +99,24 @@ private:
     QLabel *m_folderLabel = nullptr;
     QToolButton *m_sourceButton = nullptr;
     QToolButton *m_sidebarButton = nullptr;
+
+    GitRunner *m_git = nullptr;
+    QWidget *m_gitBar = nullptr;
+    QLabel *m_gitStatusLabel = nullptr;
+    QPushButton *m_gitPullButton = nullptr;
+    QPushButton *m_gitFetchButton = nullptr;
+    QPushButton *m_gitPushButton = nullptr;
+    QPushButton *m_gitStageButton = nullptr;
+    QPushButton *m_gitCommitButton = nullptr;
+    QString m_gitRoot;
+    QString m_gitBranch;
+
+    struct GitStep {
+        QStringList arguments;
+        QString label;
+    };
+    QQueue<GitStep> m_gitQueue;
+    bool m_gitBusy = false;
     QTimer *m_folderRefreshTimer = nullptr;
     QString m_folderPath;
     QString m_displayedFolder;
