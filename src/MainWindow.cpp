@@ -612,7 +612,8 @@ void MainWindow::openFile()
 
     const QString path = QFileDialog::getOpenFileName(
         this, tr("打开 Markdown 文件"), startDirectory(),
-        tr("Markdown 文件 (*.md *.markdown *.mdown *.mkd);;文本文件 (*.txt);;所有文件 (*)"));
+        tr("Markdown 文件 (*.md *.markdown *.mdown *.mkd);;文本文件 (*.txt);;所有文件 (*)"),
+        nullptr, QFileDialog::DontUseNativeDialog);
     if (path.isEmpty())
         return;
     openPath(path);
@@ -665,7 +666,8 @@ bool MainWindow::saveFileAs()
 {
     QString path = QFileDialog::getSaveFileName(
         this, tr("另存为"), startDirectory(),
-        tr("Markdown 文件 (*.md);;文本文件 (*.txt);;所有文件 (*)"));
+        tr("Markdown 文件 (*.md);;文本文件 (*.txt);;所有文件 (*)"),
+        nullptr, QFileDialog::DontUseNativeDialog);
     if (path.isEmpty())
         return false;
 
@@ -683,11 +685,13 @@ void MainWindow::exportPdf()
 
     QString target = QFileDialog::getSaveFileName(
         this, tr("导出 PDF"), QDir(startDirectory()).filePath(suggested),
-        tr("PDF 文件 (*.pdf)"));
+        tr("PDF 文件 (*.pdf)"), nullptr, QFileDialog::DontUseNativeDialog);
     if (target.isEmpty())
         return;
     if (!target.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive))
         target += QStringLiteral(".pdf");
+
+    statusBar()->showMessage(tr("正在导出 PDF…"));
 
     QTextDocument document;
     MarkdownRenderer::render(m_editor->toPlainText(), &document);
@@ -699,7 +703,10 @@ void MainWindow::exportPdf()
     printer.setPageSize(QPageSize(QPageSize::A4));
     printer.setPageMargins(QMarginsF(16, 16, 16, 16), QPageLayout::Millimeter);
     printer.setDocName(QFileInfo(target).completeBaseName());
+
+    QApplication::setOverrideCursor(Qt::WaitCursor);
     document.print(&printer);
+    QApplication::restoreOverrideCursor();
 
     if (!QFileInfo::exists(target) || QFileInfo(target).size() <= 0) {
         QMessageBox::warning(this, tr("导出失败"),
@@ -971,7 +978,8 @@ void MainWindow::refreshRecentMenu()
 void MainWindow::chooseFolder()
 {
     const QString directory = QFileDialog::getExistingDirectory(
-        this, tr("打开文件夹"), startDirectory(), QFileDialog::ShowDirsOnly);
+        this, tr("打开文件夹"), startDirectory(),
+        QFileDialog::ShowDirsOnly | QFileDialog::DontUseNativeDialog);
     if (!directory.isEmpty())
         openFolder(directory);
 }
