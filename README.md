@@ -2,7 +2,7 @@
 
 一个轻量的跨平台 Markdown 编辑器，基于 **Qt 5 / C++17** 构建。
 
-当前版本 **0.10.3**。
+当前版本 **0.10.4**。
 
 ## 界面
 
@@ -94,11 +94,12 @@
 **文件 → 导出 PDF…**（`Ctrl+E`）直接弹保存对话框，选个位置就导出，没有中间预览。
 A4 纸、16mm 页边距。
 
-文件对话框一律用 Qt 自带的实现（`DontUseNativeDialog`），
-不走系统原生选择器——GTK 原生对话框在部分桌面环境下会因为 dconf / gvfs
-不可用而卡住，这也是之前「点导出就没反应」的原因。
+Linux 上文件对话框强制用 Qt 自带的实现（`DontUseNativeDialog`）：
+GTK 原生选择器在 dconf / gvfs 不可用时会导致「点导出没反应」。
+Windows / macOS 保留系统原生对话框。
 
-导出用的是 Qt 自带的 `QPrinter` + `QTextDocument`，不需要额外的 PDF 库。
+导出用的是 Qt 自带的 `QPdfWriter` + `QTextDocument`，不需要额外的 PDF 库，
+也不经过任何平台的打印子系统（Windows 打印后台、CUPS），所以三端行为一致。
 支持标题、列表（含任务列表）、引用、代码块、行内代码、粗体 / 斜体 / 删除线、
 链接、表格；图片只输出 alt 文字。
 

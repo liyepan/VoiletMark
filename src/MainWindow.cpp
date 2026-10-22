@@ -27,9 +27,9 @@
 #include <QMessageBox>
 #include <QPageLayout>
 #include <QPageSize>
+#include <QPdfWriter>
 #include <QPixmap>
 #include <QProcess>
-#include <QPrinter>
 #include <QPushButton>
 #include <QSaveFile>
 #include <QSettings>
@@ -51,6 +51,17 @@ namespace {
 
 constexpr int kMaxRecentFiles = 8;
 constexpr int kDefaultFontSize = 12;
+
+// Linux 桌面上 Qt 会尝试 GTK 原生文件选择器，dconf / gvfs 不可用时它会卡住，
+// 所以只在 Linux 上强制使用 Qt 自己的对话框；Windows / macOS 保留原生对话框。
+QFileDialog::Options fileDialogOptions()
+{
+#if defined(Q_OS_LINUX)
+    return QFileDialog::DontUseNativeDialog;
+#else
+    return QFileDialog::Options();
+#endif
+}
 
 const char kWelcomeText[] = R"VOILETMARK(
 # 欢迎使用 VoiletMark
@@ -613,7 +624,7 @@ void MainWindow::openFile()
     const QString path = QFileDialog::getOpenFileName(
         this, tr("打开 Markdown 文件"), startDirectory(),
         tr("Markdown 文件 (*.md *.markdown *.mdown *.mkd);;文本文件 (*.txt);;所有文件 (*)"),
-        nullptr, QFileDialog::DontUseNativeDialog);
+        nullptr, fileDialogOptions());
     if (path.isEmpty())
         return;
     openPath(path);
@@ -667,7 +678,7 @@ bool MainWindow::saveFileAs()
     QString path = QFileDialog::getSaveFileName(
         this, tr("另存为"), startDirectory(),
         tr("Markdown 文件 (*.md);;文本文件 (*.txt);;所有文件 (*)"),
-        nullptr, QFileDialog::DontUseNativeDialog);
+        nullptr, fileDialogOptions());
     if (path.isEmpty())
         return false;
 
@@ -685,7 +696,7 @@ void MainWindow::exportPdf()
 
     QString target = QFileDialog::getSaveFileName(
         this, tr("导出 PDF"), QDir(startDirectory()).filePath(suggested),
-        tr("PDF 文件 (*.pdf)"), nullptr, QFileDialog::DontUseNativeDialog);
+        tr("PDF 文件 (*.pdf)"), nullptr, fileDialogOptions());
     if (target.isEmpty())
         return;
     if (!target.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive))
@@ -695,18 +706,23 @@ void MainWindow::exportPdf()
 
     QTextDocument document;
     MarkdownRenderer::render(m_editor->toPlainText(), &document);
-    document.setPageSize(QSizeF(672.76, 1001.57));
 
-    QPrinter printer(QPrinter::HighResolution);
-    printer.setOutputFormat(QPrinter::PdfFormat);
-    printer.setOutputFileName(target);
-    printer.setPageSize(QPageSize(QPageSize::A4));
-    printer.setPageMargins(QMarginsF(16, 16, 16, 16), QPageLayout::Millimeter);
-    printer.setDocName(QFileInfo(target).completeBaseName());
+    {
+        // 用 QPdfWriter 直接写 PDF，不碰任何平台的打印子系统：
+        // Windows 的打印后台、Linux 的 CUPS 在没有打印机或服务异常时都可能卡住。
+        QPdfWriter writer(target);
+        writer.setPageSize(QPageSize(QPageSize::A4));
+        writer.setPageMargins(QMarginsF(16, 16, 16, 16), QPageLayout::Millimeter);
+        writer.setTitle(QFileInfo(target).completeBaseName());
 
-    QApplication::setOverrideCursor(Qt::WaitCursor);
-    document.print(&printer);
-    QApplication::restoreOverrideCursor();
+        const QRectF paintRect = writer.pageLayout().paintRectPixels(writer.resolution());
+        const qreal scale = 96.0 / writer.resolution();
+        document.setPageSize(QSizeF(paintRect.width() * scale, paintRect.height() * scale));
+
+        QApplication::setOverrideCursor(Qt::WaitCursor);
+        document.print(&writer);
+        QApplication::restoreOverrideCursor();
+    }
 
     if (!QFileInfo::exists(target) || QFileInfo(target).size() <= 0) {
         QMessageBox::warning(this, tr("导出失败"),
@@ -979,7 +995,7 @@ void MainWindow::chooseFolder()
 {
     const QString directory = QFileDialog::getExistingDirectory(
         this, tr("打开文件夹"), startDirectory(),
-        QFileDialog::ShowDirsOnly | QFileDialog::DontUseNativeDialog);
+        QFileDialog::ShowDirsOnly | fileDialogOptions());
     if (!directory.isEmpty())
         openFolder(directory);
 }

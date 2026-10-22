@@ -1,8 +1,8 @@
 TEMPLATE = app
 TARGET   = VoiletMark
-VERSION  = 0.10.3
+VERSION  = 0.10.4
 
-QT += core gui widgets printsupport
+QT += core gui widgets
 
 CONFIG += c++17 warn_on
 
