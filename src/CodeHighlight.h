@@ -34,6 +34,17 @@ struct Span {
     Token token = Token::Keyword;
 };
 
+struct LanguageEntry {
+    Language language;
+    QString info;  // 写进围栏里的标记，例如 cpp
+    QString name;  // 显示名，例如 C++
+};
+
+/// 供语言下拉菜单使用（顺序即菜单顺序）。
+const QVector<LanguageEntry> &languageEntries();
+
+QString displayName(Language language);
+
 /// 从 ```cpp 这类 info string 里识别语言（大小写不敏感）。
 Language fromInfoString(const QString &info);
 

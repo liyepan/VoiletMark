@@ -12,6 +12,7 @@
 #include <QFontMetricsF>
 #include <QGuiApplication>
 #include <QKeyEvent>
+#include <QMenu>
 #include <QMouseEvent>
 #include <QMimeData>
 #include <QPainter>
@@ -54,6 +55,14 @@ const QString &fenceMarker()
 bool isFenceLine(const QTextBlock &block)
 {
     return block.isValid() && block.text().trimmed().startsWith(fenceMarker());
+}
+
+QString fenceInfo(const QString &line)
+{
+    QString info = line.trimmed();
+    static const QRegularExpression marker(QStringLiteral("^(?:```+|~~~+)"));
+    info.remove(marker);
+    return info.trimmed();
 }
 
 class LineNumberArea : public QWidget
@@ -519,9 +528,22 @@ void MarkdownEditor::paintEvent(QPaintEvent *event)
         return;
     }
 
-    // 编辑模式：代码块套一个圆角框，右上角给个复制按钮。
+    // 编辑模式：代码块套圆角框，左上角选语言，右上角复制。
     const ThemeColors &colors = ThemeManager::instance()->colors();
     const QRectF visible(event->rect());
+
+    auto drawBadge = [&](const QRectF &badge, const QString &label, bool hovered, bool emphasized) {
+        if (!badge.isValid())
+            return;
+        QFont small = font();
+        small.setPointSizeF(qMax(7.0, font().pointSizeF() - 2.0));
+        painter.setFont(small);
+        painter.setPen(QPen(hovered ? colors.accent : colors.border, 1));
+        painter.setBrush(colors.editorBase);
+        painter.drawRoundedRect(badge, 4, 4);
+        painter.setPen(emphasized ? colors.accent : colors.placeholder);
+        painter.drawText(badge, Qt::AlignCenter, label);
+    };
 
     for (int index = 0; index < m_codeFences.size(); ++index) {
         const QRectF rect = codeFenceRect(index);
@@ -532,21 +554,12 @@ void MarkdownEditor::paintEvent(QPaintEvent *event)
         painter.setPen(QPen(colors.border, 1));
         painter.drawRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), 6, 6);
 
-        const QRectF button = copyButtonRect(index);
-        if (!button.isValid())
-            continue;
+        drawBadge(languageRect(index), languageLabel(index) + QStringLiteral(" \u25be"),
+                  m_hoveredLanguage == index, false);
 
-        QFont small = font();
-        small.setPointSizeF(qMax(7.0, font().pointSizeF() - 2.0));
-        painter.setFont(small);
-
-        const bool hovered = (m_hoveredFence == index);
         const bool copied = (m_copiedFence == index);
-        painter.setPen(QPen(hovered ? colors.accent : colors.border, 1));
-        painter.setBrush(colors.editorBase);
-        painter.drawRoundedRect(button, 4, 4);
-        painter.setPen(copied ? colors.accent : colors.placeholder);
-        painter.drawText(button, Qt::AlignCenter, copied ? tr("已复制") : tr("复制"));
+        drawBadge(copyButtonRect(index), copied ? tr("已复制") : tr("复制"),
+                  m_hoveredFence == index, copied);
     }
 }
 
@@ -567,6 +580,87 @@ QRectF MarkdownEditor::codeFenceRect(int index) const
     const qreal top = firstRect.top() - 3;
     const qreal bottom = lastRect.bottom() + 3;
     return QRectF(3, top, viewport()->width() - 6, bottom - top);
+}
+
+QRectF MarkdownEditor::languageRect(int index) const
+{
+    const QRectF rect = codeFenceRect(index);
+    if (!rect.isValid())
+        return QRectF();
+
+    QFont small = font();
+    small.setPointSizeF(qMax(7.0, font().pointSizeF() - 2.0));
+    const QFontMetricsF metrics(small);
+    const QString label = languageLabel(index) + QStringLiteral(" \u25be");
+    const qreal width = metrics.horizontalAdvance(label) + 16;
+    const qreal height = metrics.height() + 6;
+    return QRectF(rect.left() + 8, rect.top() + 6, width, height);
+}
+
+QString MarkdownEditor::languageLabel(int index) const
+{
+    if (index < 0 || index >= m_codeFences.size())
+        return QString();
+    const CodeHighlight::Language language = m_codeFences.at(index).language;
+    if (language == CodeHighlight::Language::None)
+        return tr("纯文本");
+    return CodeHighlight::displayName(language);
+}
+
+void MarkdownEditor::showLanguageMenu(int index)
+{
+    if (index < 0 || index >= m_codeFences.size())
+        return;
+
+    QMenu menu(this);
+
+    QAction *plain = menu.addAction(tr("纯文本"));
+    plain->setData(QString());
+    plain->setCheckable(true);
+    plain->setChecked(m_codeFences.at(index).language == CodeHighlight::Language::None);
+    menu.addSeparator();
+
+    for (const CodeHighlight::LanguageEntry &entry : CodeHighlight::languageEntries()) {
+        QAction *action = menu.addAction(entry.name);
+        action->setData(entry.info);
+        action->setCheckable(true);
+        action->setChecked(entry.language == m_codeFences.at(index).language);
+    }
+
+    const QRectF badge = languageRect(index);
+    const QPoint origin = viewport()->mapToGlobal(badge.bottomLeft().toPoint());
+    QAction *chosen = menu.exec(origin);
+    if (!chosen)
+        return;
+
+    setCodeFenceLanguage(index, chosen->data().toString());
+}
+
+void MarkdownEditor::setCodeFenceLanguage(int index, const QString &info)
+{
+    if (index < 0 || index >= m_codeFences.size())
+        return;
+
+    const int blockNumber = m_codeFences.at(index).open;
+    QTextBlock block = document()->findBlockByNumber(blockNumber);
+    if (!block.isValid())
+        return;
+
+    static const QRegularExpression marker(QStringLiteral("^\\s{0,3}(?:```+|~~~+)"));
+    const QRegularExpressionMatch match = marker.match(block.text());
+    if (!match.hasMatch())
+        return;
+
+    const QString newText = match.captured(0) + info;
+    if (newText == block.text())
+        return;
+
+    QTextCursor cursor(block);
+    cursor.beginEditBlock();
+    cursor.setPosition(block.position());
+    cursor.setPosition(block.position() + block.text().length(), QTextCursor::KeepAnchor);
+    cursor.insertText(newText);
+    cursor.endEditBlock();
 }
 
 QRectF MarkdownEditor::copyButtonRect(int index) const
@@ -606,6 +700,7 @@ void MarkdownEditor::rebuildCodeFences()
     static const QRegularExpression fencePattern(QStringLiteral("^\\s{0,3}(?:```|~~~)"));
     bool inFence = false;
     int open = -1;
+    QString openInfo;
 
     for (QTextBlock block = document()->firstBlock(); block.isValid(); block = block.next()) {
         if (!fencePattern.match(block.text()).hasMatch())
@@ -613,10 +708,13 @@ void MarkdownEditor::rebuildCodeFences()
         if (!inFence) {
             inFence = true;
             open = block.blockNumber();
+            openInfo = fenceInfo(block.text());
         } else {
             CodeFence fence;
             fence.open = open;
             fence.close = block.blockNumber();
+            fence.info = openInfo;
+            fence.language = CodeHighlight::fromInfoString(openInfo);
             m_codeFences.append(fence);
             inFence = false;
             open = -1;
@@ -625,6 +723,8 @@ void MarkdownEditor::rebuildCodeFences()
     if (inFence && open >= 0) {
         CodeFence fence;
         fence.open = open;
+        fence.info = openInfo;
+        fence.language = CodeHighlight::fromInfoString(openInfo);
         m_codeFences.append(fence);
     }
 
@@ -637,17 +737,25 @@ void MarkdownEditor::mouseMoveEvent(QMouseEvent *event)
     if (m_sourceMode)
         return;
 
-    int hovered = -1;
+    int hoveredCopy = -1;
+    int hoveredLanguage = -1;
     for (int index = 0; index < m_codeFences.size(); ++index) {
+        if (languageRect(index).contains(event->pos())) {
+            hoveredLanguage = index;
+            break;
+        }
         if (copyButtonRect(index).contains(event->pos())) {
-            hovered = index;
+            hoveredCopy = index;
             break;
         }
     }
 
-    if (hovered != m_hoveredFence) {
-        m_hoveredFence = hovered;
-        viewport()->setCursor(hovered >= 0 ? Qt::PointingHandCursor : Qt::IBeamCursor);
+    if (hoveredCopy != m_hoveredFence || hoveredLanguage != m_hoveredLanguage) {
+        m_hoveredFence = hoveredCopy;
+        m_hoveredLanguage = hoveredLanguage;
+        viewport()->setCursor((hoveredCopy >= 0 || hoveredLanguage >= 0)
+                                  ? Qt::PointingHandCursor
+                                  : Qt::IBeamCursor);
         viewport()->update();
     }
 }
@@ -655,6 +763,12 @@ void MarkdownEditor::mouseMoveEvent(QMouseEvent *event)
 void MarkdownEditor::mousePressEvent(QMouseEvent *event)
 {
     if (!m_sourceMode && event->button() == Qt::LeftButton) {
+        for (int index = 0; index < m_codeFences.size(); ++index) {
+            if (languageRect(index).contains(event->pos())) {
+                showLanguageMenu(index);
+                return;
+            }
+        }
         for (int index = 0; index < m_codeFences.size(); ++index) {
             if (!copyButtonRect(index).contains(event->pos()))
                 continue;

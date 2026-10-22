@@ -372,37 +372,43 @@
 <context>
     <name>MarkdownEditor</name>
     <message>
-        <location filename="../src/MarkdownEditor.cpp" line="549" />
-        <location filename="../src/MarkdownEditor.cpp" line="581" />
+        <location filename="../src/MarkdownEditor.cpp" line="561" />
+        <location filename="../src/MarkdownEditor.cpp" line="675" />
         <source>已复制</source>
         <translation>Copied</translation>
     </message>
     <message>
-        <location filename="../src/MarkdownEditor.cpp" line="549" />
-        <location filename="../src/MarkdownEditor.cpp" line="581" />
+        <location filename="../src/MarkdownEditor.cpp" line="561" />
+        <location filename="../src/MarkdownEditor.cpp" line="675" />
         <source>复制</source>
         <translation>Copy</translation>
+    </message>
+    <message>
+        <location filename="../src/MarkdownEditor.cpp" line="606" />
+        <location filename="../src/MarkdownEditor.cpp" line="617" />
+        <source>纯文本</source>
+        <translation>Plain text</translation>
     </message>
 </context>
 <context>
     <name>QObject</name>
     <message>
-        <location filename="../src/ThemeManager.cpp" line="354" />
+        <location filename="../src/ThemeManager.cpp" line="364" />
         <source>浅色</source>
         <translation>Light</translation>
     </message>
     <message>
-        <location filename="../src/ThemeManager.cpp" line="355" />
+        <location filename="../src/ThemeManager.cpp" line="365" />
         <source>深色</source>
         <translation>Dark</translation>
     </message>
     <message>
-        <location filename="../src/ThemeManager.cpp" line="356" />
+        <location filename="../src/ThemeManager.cpp" line="366" />
         <source>按时段自动</source>
         <translation>Scheduled</translation>
     </message>
     <message>
-        <location filename="../src/ThemeManager.cpp" line="359" />
+        <location filename="../src/ThemeManager.cpp" line="369" />
         <source>跟随系统</source>
         <translation>Follow System</translation>
     </message>

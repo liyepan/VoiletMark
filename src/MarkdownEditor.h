@@ -1,5 +1,7 @@
 #pragma once
 
+#include "CodeHighlight.h"
+
 #include <QPlainTextEdit>
 #include <QVector>
 
@@ -66,7 +68,11 @@ private:
     void indentSelection(bool outdent);
     QRectF codeFenceRect(int index) const;
     QRectF copyButtonRect(int index) const;
+    QRectF languageRect(int index) const;
     QString codeFenceText(int index) const;
+    QString languageLabel(int index) const;
+    void showLanguageMenu(int index);
+    void setCodeFenceLanguage(int index, const QString &info);
     bool acceptsLocalFiles(const QMimeData *mime) const;
     void selectedBlockRange(int *firstBlock, int *lastBlock) const;
     void selectBlocks(int firstBlock, int lastBlock);
@@ -76,6 +82,8 @@ private:
     struct CodeFence {
         int open = -1;   // 开围栏所在行
         int close = -1;  // 闭围栏所在行，未闭合时为 -1
+        QString info;    // 围栏上的语言标记
+        CodeHighlight::Language language = CodeHighlight::Language::None;
     };
 
     QWidget *m_lineNumberArea = nullptr;
@@ -87,5 +95,6 @@ private:
     QVector<CodeFence> m_codeFences;
     QTimer *m_fenceTimer = nullptr;
     int m_hoveredFence = -1;
+    int m_hoveredLanguage = -1;
     int m_copiedFence = -1;
 };

@@ -163,6 +163,34 @@ const LanguageDef *definition(Language language)
 
 } // namespace
 
+const QVector<LanguageEntry> &languageEntries()
+{
+    static const QVector<LanguageEntry> entries = {
+        {Language::C, QStringLiteral("c"), QStringLiteral("C")},
+        {Language::Cpp, QStringLiteral("cpp"), QStringLiteral("C++")},
+        {Language::Python, QStringLiteral("python"), QStringLiteral("Python")},
+        {Language::JavaScript, QStringLiteral("js"), QStringLiteral("JavaScript")},
+        {Language::TypeScript, QStringLiteral("ts"), QStringLiteral("TypeScript")},
+        {Language::Java, QStringLiteral("java"), QStringLiteral("Java")},
+        {Language::Rust, QStringLiteral("rust"), QStringLiteral("Rust")},
+        {Language::Go, QStringLiteral("go"), QStringLiteral("Go")},
+        {Language::Json, QStringLiteral("json"), QStringLiteral("JSON")},
+        {Language::Bash, QStringLiteral("bash"), QStringLiteral("Bash")},
+        {Language::Sql, QStringLiteral("sql"), QStringLiteral("SQL")},
+        {Language::Yaml, QStringLiteral("yaml"), QStringLiteral("YAML")},
+    };
+    return entries;
+}
+
+QString displayName(Language language)
+{
+    for (const LanguageEntry &entry : languageEntries()) {
+        if (entry.language == language)
+            return entry.name;
+    }
+    return QString();
+}
+
 Language fromInfoString(const QString &info)
 {
     QString name = info.trimmed().toLower();
