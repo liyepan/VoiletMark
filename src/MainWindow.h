@@ -60,6 +60,7 @@ private:
     QStringList scanFolder() const;
     void setSourceModeEnabled(bool enabled);
     void exportPdf();
+    void logExport(const QString &message);
 
     // ---- Git ----
     void updateGitState();

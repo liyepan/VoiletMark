@@ -10,6 +10,7 @@
 #include <QActionGroup>
 #include <QApplication>
 #include <QCloseEvent>
+#include <QDateTime>
 #include <QDir>
 #include <QDirIterator>
 #include <QDockWidget>
@@ -688,6 +689,20 @@ bool MainWindow::saveFileAs()
     return writeToFile(path);
 }
 
+void MainWindow::logExport(const QString &message)
+{
+    const QString directory = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    if (directory.isEmpty())
+        return;
+    QDir().mkpath(directory);
+
+    QFile file(QDir(directory).filePath(QStringLiteral("export.log")));
+    if (!file.open(QIODevice::Append | QIODevice::Text))
+        return;
+    QTextStream stream(&file);
+    stream << QDateTime::currentDateTime().toString(Qt::ISODate) << "  " << message << "\n";
+}
+
 void MainWindow::exportPdf()
 {
     QString suggested = m_currentPath.isEmpty() ? tr("未命名")
@@ -702,27 +717,52 @@ void MainWindow::exportPdf()
     if (!target.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive))
         target += QStringLiteral(".pdf");
 
+    logExport(QStringLiteral("dialog closed, target=%1").arg(target));
     statusBar()->showMessage(tr("正在导出 PDF…"));
+    QApplication::processEvents();
+
+    // 用 QPdfWriter 直接写 PDF，不碰任何平台的打印子系统：
+    // Windows 的打印后台、Linux 的 CUPS 在没有打印机或服务异常时都可能卡住。
+    QPdfWriter writer(target);
+    writer.setPageSize(QPageSize(QPageSize::A4));
+    writer.setPageMargins(QMarginsF(16, 16, 16, 16), QPageLayout::Millimeter);
+    writer.setTitle(QFileInfo(target).completeBaseName());
+
+    // 先把页面尺寸定下来再渲染：表格用的是百分比宽度，
+    // 页面宽度为 0 时插入表格会让某些平台的排版循环算不出结果。
+    QSizeF pageSize(672.76, 1001.57);
+    const QRectF paintRect = writer.pageLayout().paintRectPixels(writer.resolution());
+    const qreal resolution = qMax(1, writer.resolution());
+    if (paintRect.width() > 100 && paintRect.height() > 100) {
+        const qreal scale = 96.0 / resolution;
+        pageSize = QSizeF(paintRect.width() * scale, paintRect.height() * scale);
+    }
 
     QTextDocument document;
+    document.setPageSize(pageSize);
+    logExport(QStringLiteral("rendering, page size=%1x%2").arg(pageSize.width()).arg(pageSize.height()));
+
+    QApplication::setOverrideCursor(Qt::WaitCursor);
     MarkdownRenderer::render(m_editor->toPlainText(), &document);
+    const QSizeF documentSize = document.size();
+    logExport(QStringLiteral("rendered, blocks=%1 height=%2")
+                  .arg(document.blockCount())
+                  .arg(documentSize.height()));
 
-    {
-        // 用 QPdfWriter 直接写 PDF，不碰任何平台的打印子系统：
-        // Windows 的打印后台、Linux 的 CUPS 在没有打印机或服务异常时都可能卡住。
-        QPdfWriter writer(target);
-        writer.setPageSize(QPageSize(QPageSize::A4));
-        writer.setPageMargins(QMarginsF(16, 16, 16, 16), QPageLayout::Millimeter);
-        writer.setTitle(QFileInfo(target).completeBaseName());
-
-        const QRectF paintRect = writer.pageLayout().paintRectPixels(writer.resolution());
-        const qreal scale = 96.0 / writer.resolution();
-        document.setPageSize(QSizeF(paintRect.width() * scale, paintRect.height() * scale));
-
-        QApplication::setOverrideCursor(Qt::WaitCursor);
-        document.print(&writer);
+    if (!qIsFinite(documentSize.width()) || !qIsFinite(documentSize.height())
+        || documentSize.height() <= 0) {
         QApplication::restoreOverrideCursor();
+        logExport(QStringLiteral("aborted: bad document size %1x%2")
+                      .arg(documentSize.width())
+                      .arg(documentSize.height()));
+        QMessageBox::warning(this, tr("导出失败"), tr("文档排版结果异常，已中止导出。"));
+        return;
     }
+
+    document.print(&writer);
+    QApplication::restoreOverrideCursor();
+
+    logExport(QStringLiteral("printed, size=%1").arg(QFileInfo(target).size()));
 
     if (!QFileInfo::exists(target) || QFileInfo(target).size() <= 0) {
         QMessageBox::warning(this, tr("导出失败"),
