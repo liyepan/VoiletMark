@@ -1,8 +1,22 @@
+# Qt Creator / qmake 产物
 build/
 build-*/
-*.user
-*.autosave
-.vscode/
-.idea/
+Makefile
+*.o
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+.qmake.stash
+*_plugin_import.cpp
+*.pro.user
+*.pro.user.*
+
+# 构建工具
 compile_commands.json
 CMakeLists.txt.user
+
+# 编辑器
+.vscode/
+.idea/
+*.autosave

@@ -44,13 +44,23 @@
 
 ## 构建
 
-依赖：Qt 5.12+（含 Widgets）、CMake 3.16+、支持 C++17 的编译器。
+依赖：Qt 5.12+（含 Widgets 模块）、支持 C++17 的编译器。
+
+### Qt Creator（推荐）
+
+1. 用 Qt Creator 打开根目录的 `VoiletMark.pro`
+2. 在 **项目 → 构建设置** 中选好本机的 Qt 5.15.2 套件（Kit）
+3. `Ctrl+R` 直接运行
+
+Qt Creator 默认走影子构建（shadow build），不会污染源码目录。
+
+### 命令行
 
 ```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \\
-      -DCMAKE_PREFIX_PATH="$HOME/Qt5/5.15.2/gcc_64"
-cmake --build build -j"$(nproc)"
-./build/VoiletMark
+mkdir -p build && cd build
+$HOME/Qt5/5.15.2/gcc_64/bin/qmake ../VoiletMark.pro
+make -j"$(nproc)"
+./VoiletMark
 ```
 
 或者直接：
@@ -59,7 +69,8 @@ cmake --build build -j"$(nproc)"
 ./scripts/build.sh
 ```
 
-脚本会自动探测 `$HOME/Qt5/5.15.2/gcc_64`，也可以用 `QT_PREFIX` 环境变量指定。
+脚本会依次查找 `command -v qmake`、`$QT_PREFIX/bin/qmake`、
+`$HOME/Qt5/5.15.2/gcc_64/bin/qmake`；也可以用 `QMAKE=/path/to/qmake` 直接指定。
 
 ## 命令行
 

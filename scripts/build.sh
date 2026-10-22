@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# 一键构建。可用 QT_PREFIX 指定 Qt 前缀，例如：
+# 一键构建（qmake）。指定 Qt：
+#   QMAKE=$HOME/Qt5/5.15.2/gcc_64/bin/qmake ./scripts/build.sh
 #   QT_PREFIX=$HOME/Qt5/5.15.2/gcc_64 ./scripts/build.sh
 set -euo pipefail
 
@@ -14,14 +15,28 @@ if [[ -z "${QT_PREFIX:-}" ]]; then
     done
 fi
 
-cmake_args=(-S "$root" -B "$root/build" -DCMAKE_BUILD_TYPE=Release)
-if [[ -n "${QT_PREFIX:-}" ]]; then
-    cmake_args+=(-DCMAKE_PREFIX_PATH="$QT_PREFIX")
-    echo "使用 Qt: $QT_PREFIX"
+qmake_bin="${QMAKE:-}"
+if [[ -z "$qmake_bin" ]]; then
+    if command -v qmake >/dev/null 2>&1; then
+        qmake_bin="$(command -v qmake)"
+    elif [[ -n "${QT_PREFIX:-}" && -x "$QT_PREFIX/bin/qmake" ]]; then
+        qmake_bin="$QT_PREFIX/bin/qmake"
+    fi
 fi
 
-cmake "${cmake_args[@]}"
-cmake --build "$root/build" -j"$(nproc)"
+if [[ -z "$qmake_bin" ]]; then
+    echo "找不到 qmake；请设置 QT_PREFIX 或 QMAKE 指向 Qt 安装目录。" >&2
+    exit 1
+fi
+
+echo "使用 qmake: $qmake_bin"
+build_dir="$root/build"
+mkdir -p "$build_dir"
+(
+    cd "$build_dir"
+    "$qmake_bin" "$root/VoiletMark.pro"
+    make -j"$(nproc)"
+)
 
 echo
-echo "构建完成: $root/build/VoiletMark"
+echo "构建完成: $build_dir/VoiletMark"
