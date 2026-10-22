@@ -1,10 +1,13 @@
 #include "MarkdownRenderer.h"
 
+#include "CodeHighlight.h"
+
 #include <QColor>
 #include <QFont>
 #include <QRegularExpression>
 #include <QTextBlockFormat>
 #include <QTextCharFormat>
+#include <QTextFrame>
 #include <QTextCursor>
 #include <QTextDocument>
 
@@ -37,8 +40,9 @@ struct Style
     QColor heading = hex("#11151a");
     QColor muted = hex("#5b6570");
     QColor rule = hex("#d0d7de");
-    QColor codeText = hex("#b4295a");
+    QColor codeText = hex("#24292f");
     QColor codeBg = hex("#f3f4f6");
+    QColor border = hex("#d0d7de");
     QColor link = hex("#0969da");
     QColor marker = hex("#0969da");
 };
@@ -62,7 +66,7 @@ private:
     void renderHeading(int level, const QString &text);
     void renderParagraph(const QString &text, int quoteDepth);
     void renderListItem(const QString &marker, const QString &text, int indentLevel);
-    void renderCodeBlock(const QStringList &lines);
+    void renderCodeBlock(const QStringList &lines, const QString &info);
     void renderRule();
     void renderInline(const QString &text, const QTextCharFormat &base);
 
@@ -158,29 +162,69 @@ void Renderer::renderListItem(const QString &marker, const QString &text, int in
     renderInline(text, bodyFormat());
 }
 
-void Renderer::renderCodeBlock(const QStringList &lines)
+void Renderer::renderCodeBlock(const QStringList &lines, const QString &info)
 {
-    QTextBlockFormat blockFormat;
-    blockFormat.setLineHeight(135, QTextBlockFormat::ProportionalHeight);
-    blockFormat.setTopMargin(6);
-    blockFormat.setBottomMargin(10);
-    blockFormat.setLeftMargin(14);
-    blockFormat.setRightMargin(14);
-    blockFormat.setBackground(m_style.codeBg);
+    if (m_firstBlock) {
+        // 文档一开头就是代码块：先垫一个空段落，frame 才有地方插。
+        QTextBlockFormat emptyFormat;
+        beginBlock(emptyFormat, bodyFormat());
+    }
 
+    QTextFrameFormat frameFormat;
+    frameFormat.setBackground(m_style.codeBg);
+    frameFormat.setBorder(1);
+    frameFormat.setBorderBrush(m_style.border);
+    frameFormat.setBorderStyle(QTextFrameFormat::BorderStyle_Solid);
+    frameFormat.setPadding(8);
+    frameFormat.setTopMargin(6);
+    frameFormat.setBottomMargin(12);
+
+    QTextFrame *frame = m_cursor.insertFrame(frameFormat);
+    QTextCursor frameCursor(m_document);
+    frameCursor.setPosition(frame->firstPosition());
+    bool firstInside = true;
+
+    const auto insideBlock = [&](const QTextBlockFormat &blockFormat,
+                                 const QTextCharFormat &charFormat) {
+        if (firstInside) {
+            frameCursor.setBlockFormat(blockFormat);
+            frameCursor.setBlockCharFormat(charFormat);
+            firstInside = false;
+        } else {
+            frameCursor.insertBlock(blockFormat, charFormat);
+        }
+    };
+
+    const QString language = CodeHighlight::displayName(CodeHighlight::fromInfoString(info));
+    if (!language.isEmpty()) {
+        QTextBlockFormat labelFormat;
+        labelFormat.setAlignment(Qt::AlignRight);
+        labelFormat.setBottomMargin(2);
+
+        QTextCharFormat labelChar;
+        labelChar.setForeground(m_style.muted);
+        labelChar.setFontPointSize(kBodySize * 0.8);
+
+        insideBlock(labelFormat, labelChar);
+        frameCursor.insertText(language, labelChar);
+    }
+
+    QTextBlockFormat codeBlock;
+    codeBlock.setLineHeight(130, QTextBlockFormat::ProportionalHeight);
     const QTextCharFormat format = codeFormat();
+
     QStringList content = lines;
     if (content.isEmpty())
         content << QString();
 
-    for (int index = 0; index < content.size(); ++index) {
-        QTextBlockFormat lineFormat = blockFormat;
-        lineFormat.setTopMargin(index == 0 ? 6 : 0);
-        lineFormat.setBottomMargin(index == content.size() - 1 ? 10 : 0);
-        beginBlock(lineFormat, format);
-        const QString line = content.at(index);
-        m_cursor.insertText(line.isEmpty() ? QStringLiteral(" ") : line, format);
+    for (const QString &line : content) {
+        insideBlock(codeBlock, format);
+        frameCursor.insertText(line.isEmpty() ? QStringLiteral(" ") : line, format);
     }
+
+    // 光标挪到边框外面，后面的内容接着写
+    m_cursor = QTextCursor(m_document);
+    m_cursor.setPosition(frame->lastPosition());
 }
 
 void Renderer::renderRule()
@@ -329,7 +373,7 @@ void Renderer::run(const QString &markdown)
                 code << lines.at(index++);
             if (index < lines.size())
                 ++index; // 跳过闭合围栏
-            renderCodeBlock(code);
+            renderCodeBlock(code, fence.captured(1));
             continue;
         }
 
