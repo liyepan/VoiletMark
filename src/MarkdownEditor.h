@@ -8,6 +8,7 @@
 class MarkdownHighlighter;
 class QTextBlock;
 class QTimer;
+class QTableWidget;
 
 /// 编辑器本体：等宽字体、行号栏、当前行高亮、Tab 缩进、
 /// Ctrl+滚轮缩放，以及把拖入的文件转交给主窗口打开。
@@ -63,6 +64,8 @@ private slots:
     void rebuildCodeFences();
 
 private:
+    struct TableInfo;
+
     void applyEditorFont();
     void updateViewportMargins();
     void indentSelection(bool outdent);
@@ -73,6 +76,15 @@ private:
     QString languageLabel(int index) const;
     void showLanguageMenu(int index);
     void setCodeFenceLanguage(int index, const QString &info);
+
+    // ---- 表格 ----
+    void rebuildTables();
+    void positionTableWidgets();
+    QRectF tableRect(const TableInfo &table) const;
+    void createTableWidget(int index);
+    void applyTableEdit(int index);
+    void replaceTableText(int index, const QStringList &lines);
+    int tableIndexFor(const QTableWidget *widget) const;
     bool acceptsLocalFiles(const QMimeData *mime) const;
     void selectedBlockRange(int *firstBlock, int *lastBlock) const;
     void selectBlocks(int firstBlock, int lastBlock);
@@ -86,6 +98,13 @@ private:
         CodeHighlight::Language language = CodeHighlight::Language::None;
     };
 
+    struct TableInfo {
+        int firstBlock = -1;
+        int lastBlock = -1;
+        QTableWidget *widget = nullptr;
+        QVector<Qt::Alignment> alignments;
+    };
+
     QWidget *m_lineNumberArea = nullptr;
     MarkdownHighlighter *m_highlighter = nullptr;
     int m_fontPointSize = 12;
@@ -93,6 +112,9 @@ private:
     int m_activeBlock = -1;
 
     QVector<CodeFence> m_codeFences;
+    QVector<TableInfo> m_tables;
+    bool m_updatingTable = false;
+    bool m_skipTableRebuild = false;
     QTimer *m_fenceTimer = nullptr;
     int m_hoveredFence = -1;
     int m_hoveredLanguage = -1;

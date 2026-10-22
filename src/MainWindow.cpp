@@ -76,6 +76,12 @@ const char kWelcomeText[] = R"VOILETMARK(
 1. 有序列表项
 2. 另一个有序列表项
 
+| 功能 | 状态 |
+| --- | :---: |
+| 语法高亮 | 完成 |
+| 导出 PDF | 完成 |
+| Git 同步 | 完成 |
+
 - [x] 自动深浅色主题
 - [x] Markdown 语法高亮
 - [x] 导出 PDF
@@ -118,6 +124,12 @@ switch it under **View → Theme**.
 
 > Quotes, lists, `inline code`, **bold**, *italic*, ~~strikethrough~~
 > and [links](https://example.com) all render in place.
+
+| Feature | Status |
+| --- | :---: |
+| Syntax highlighting | Done |
+| PDF export | Done |
+| Git sync | Done |
 
 - [x] Syntax highlighting
 - [x] Folder sidebar

@@ -11,6 +11,7 @@
 #include <QFontDatabase>
 #include <QFontMetricsF>
 #include <QGuiApplication>
+#include <QHeaderView>
 #include <QKeyEvent>
 #include <QMenu>
 #include <QMouseEvent>
@@ -20,6 +21,7 @@
 #include <QRegularExpression>
 #include <QTextBlock>
 #include <QTextCursor>
+#include <QTableWidget>
 #include <QTextOption>
 #include <QTimer>
 #include <QUrl>
@@ -123,8 +125,20 @@ MarkdownEditor::MarkdownEditor(QWidget *parent)
     m_fenceTimer = new QTimer(this);
     m_fenceTimer->setSingleShot(true);
     m_fenceTimer->setInterval(120);
-    connect(m_fenceTimer, &QTimer::timeout, this, &MarkdownEditor::rebuildCodeFences);
+    connect(m_fenceTimer, &QTimer::timeout, this, [this] {
+        rebuildCodeFences();
+        if (m_updatingTable)
+            return;
+        if (m_skipTableRebuild) {
+            m_skipTableRebuild = false;
+            positionTableWidgets();
+            return;
+        }
+        rebuildTables();
+    });
     connect(this, &QPlainTextEdit::textChanged, this, [this] { m_fenceTimer->start(); });
+    connect(this, &QPlainTextEdit::updateRequest, this,
+            [this](const QRect &, int) { positionTableWidgets(); });
 
     m_lineNumberArea->setVisible(m_sourceMode);
     applyEditorFont();
@@ -252,6 +266,7 @@ void MarkdownEditor::applyTheme()
 {
     updateCurrentLineHighlight();
     m_lineNumberArea->update();
+    rebuildTables();
     viewport()->update();
 }
 
@@ -293,6 +308,7 @@ void MarkdownEditor::setSourceMode(bool enabled)
     applyEditorFont();
     updateViewportMargins();
     updateCurrentLineHighlight();
+    rebuildTables();
     viewport()->update();
     emit sourceModeChanged(enabled);
 }
@@ -594,6 +610,16 @@ QRectF MarkdownEditor::languageRect(int index) const
     const QString label = languageLabel(index) + QStringLiteral(" \u25be");
     const qreal width = metrics.horizontalAdvance(label) + 16;
     const qreal height = metrics.height() + 6;
+
+    // 只有一行代码时，框太矮，把语言徽标挪到复制按钮左边同一行。
+    const CodeFence &fence = m_codeFences.at(index);
+    const int lastLine = fence.close >= 0 ? fence.close : document()->blockCount() - 1;
+    const int contentLines = lastLine - fence.open - 1;
+    if (contentLines <= 1) {
+        const QRectF copy = copyButtonRect(index);
+        return QRectF(copy.left() - width - 6, copy.top(), width, height);
+    }
+
     return QRectF(rect.right() - width - 8, rect.bottom() - height - 6, width, height);
 }
 
@@ -909,3 +935,337 @@ void MarkdownEditor::dropEvent(QDropEvent *event)
     }
     QPlainTextEdit::dropEvent(event);
 }
+
+// ---------------------------------------------------------------- 表格
+
+namespace {
+bool isTableSeparatorLine(const QString &text)
+{
+    static const QRegularExpression pattern(
+        QStringLiteral(R"(^\s*\|?\s*:?-{2,}:?\s*(?:\|\s*:?-{2,}:?\s*)+\|?\s*$)"));
+    return pattern.match(text).hasMatch();
+}
+
+QStringList splitTableRow(const QString &line)
+{
+    QString text = line.trimmed();
+    if (text.startsWith(QLatin1Char('|')))
+        text.remove(0, 1);
+    if (text.endsWith(QLatin1Char('|')))
+        text.chop(1);
+    QStringList cells = text.split(QLatin1Char('|'));
+    for (QString &cell : cells)
+        cell = cell.trimmed();
+    return cells;
+}
+} // namespace
+
+void MarkdownEditor::rebuildTables()
+{
+    for (TableInfo &table : m_tables) {
+        if (table.widget) {
+            table.widget->deleteLater();
+            table.widget = nullptr;
+        }
+    }
+    m_tables.clear();
+
+    if (m_sourceMode || !document())
+        return;
+
+    QTextBlock block = document()->firstBlock();
+    while (block.isValid()) {
+        if (!block.text().contains(QLatin1Char('|'))) {
+            block = block.next();
+            continue;
+        }
+        const QTextBlock separator = block.next();
+        if (!separator.isValid() || !isTableSeparatorLine(separator.text())) {
+            block = block.next();
+            continue;
+        }
+
+        TableInfo table;
+        table.firstBlock = block.blockNumber();
+
+        int last = separator.blockNumber();
+        QTextBlock cursor = separator.next();
+        while (cursor.isValid() && !cursor.text().trimmed().isEmpty()
+               && cursor.text().contains(QLatin1Char('|'))) {
+            last = cursor.blockNumber();
+            cursor = cursor.next();
+        }
+        table.lastBlock = last;
+
+        for (const QString &cell : splitTableRow(separator.text())) {
+            const bool left = cell.startsWith(QLatin1Char(':'));
+            const bool right = cell.endsWith(QLatin1Char(':'));
+            if (left && right)
+                table.alignments.append(Qt::AlignHCenter);
+            else if (right)
+                table.alignments.append(Qt::AlignRight);
+            else
+                table.alignments.append(Qt::AlignLeft);
+        }
+
+        m_tables.append(table);
+        block = document()->findBlockByNumber(last).next();
+    }
+
+    for (int index = 0; index < m_tables.size(); ++index)
+        createTableWidget(index);
+
+    positionTableWidgets();
+}
+
+void MarkdownEditor::createTableWidget(int index)
+{
+    TableInfo &table = m_tables[index];
+    const QTextBlock first = document()->findBlockByNumber(table.firstBlock);
+    if (!first.isValid())
+        return;
+
+    auto *widget = new QTableWidget(viewport());
+    widget->setObjectName(QStringLiteral("markdownTable"));
+    widget->setFrameShape(QFrame::NoFrame);
+    widget->setShowGrid(true);
+    widget->setWordWrap(true);
+    widget->horizontalHeader()->hide();
+    widget->verticalHeader()->hide();
+    widget->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    widget->verticalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    widget->setSelectionMode(QAbstractItemView::SingleSelection);
+    widget->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::SelectedClicked
+                            | QAbstractItemView::EditKeyPressed);
+    widget->setContextMenuPolicy(Qt::CustomContextMenu);
+    widget->setFont(font());
+
+    const ThemeColors &colors = ThemeManager::instance()->colors();
+    widget->setStyleSheet(
+        QStringLiteral("QTableWidget { background: %1; color: %2; border: 1px solid %3;"
+                       " border-radius: 6px; gridline-color: %3; }"
+                       "QTableWidget::item { padding: 2px 6px; }"
+                       "QTableWidget::item:selected { background: %4; color: %5; }")
+            .arg(colors.editorBase.name(), colors.editorText.name(), colors.border.name(),
+                 colors.highlight.name(), colors.highlightedText.name()));
+
+    {
+        const QSignalBlocker blocker(widget);
+
+        const QStringList header = splitTableRow(first.text());
+        widget->setColumnCount(qMax(1, header.size()));
+        widget->setRowCount(1);
+
+        for (int column = 0; column < header.size(); ++column) {
+            auto *item = new QTableWidgetItem(header.at(column));
+            QFont itemFont = item->font();
+            itemFont.setBold(true);
+            item->setFont(itemFont);
+            item->setTextAlignment(table.alignments.value(column, Qt::AlignLeft) | Qt::AlignVCenter);
+            widget->setItem(0, column, item);
+        }
+
+        int row = 1;
+        for (int number = table.firstBlock + 2; number <= table.lastBlock; ++number, ++row) {
+            const QStringList cells = splitTableRow(document()->findBlockByNumber(number).text());
+            widget->insertRow(row);
+            for (int column = 0; column < widget->columnCount(); ++column) {
+                auto *item = new QTableWidgetItem(cells.value(column));
+                item->setTextAlignment(table.alignments.value(column, Qt::AlignLeft)
+                                       | Qt::AlignVCenter);
+                widget->setItem(row, column, item);
+            }
+        }
+    }
+
+    connect(widget, &QTableWidget::itemChanged, this, [this, widget](QTableWidgetItem *) {
+        if (m_updatingTable)
+            return;
+        const int current = tableIndexFor(widget);
+        if (current >= 0)
+            applyTableEdit(current);
+    });
+
+    connect(widget, &QWidget::customContextMenuRequested, this, [this, widget](const QPoint &pos) {
+        const int current = tableIndexFor(widget);
+        if (current < 0)
+            return;
+
+        QMenu menu(this);
+        menu.addAction(tr("插入行"), this, [this, widget, current] {
+            const int row = qBound(1, widget->currentRow() + 1, widget->rowCount());
+            {
+                const QSignalBlocker blocker(widget);
+                widget->insertRow(row);
+                for (int column = 0; column < widget->columnCount(); ++column) {
+                    auto *item = new QTableWidgetItem;
+                    item->setTextAlignment(m_tables.at(current).alignments.value(column,
+                                                                                Qt::AlignLeft)
+                                           | Qt::AlignVCenter);
+                    widget->setItem(row, column, item);
+                }
+            }
+            applyTableEdit(current);
+        });
+        menu.addAction(tr("删除行"), this, [this, widget, current] {
+            if (widget->rowCount() <= 2)
+                return;
+            {
+                const QSignalBlocker blocker(widget);
+                widget->removeRow(qMax(1, widget->currentRow()));
+            }
+            applyTableEdit(current);
+        });
+        menu.addSeparator();
+        menu.addAction(tr("插入列"), this, [this, widget, current] {
+            const int column = qBound(0, widget->currentColumn() + 1, widget->columnCount());
+            {
+                const QSignalBlocker blocker(widget);
+                widget->insertColumn(column);
+                for (int row = 0; row < widget->rowCount(); ++row) {
+                    auto *item = new QTableWidgetItem;
+                    item->setTextAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+                    widget->setItem(row, column, item);
+                }
+                if (column <= m_tables.at(current).alignments.size())
+                    m_tables[current].alignments.insert(column, Qt::AlignLeft);
+            }
+            applyTableEdit(current);
+        });
+        menu.addAction(tr("删除列"), this, [this, widget, current] {
+            if (widget->columnCount() <= 1)
+                return;
+            const int column = qMax(0, widget->currentColumn());
+            {
+                const QSignalBlocker blocker(widget);
+                widget->removeColumn(column);
+                if (column < m_tables.at(current).alignments.size())
+                    m_tables[current].alignments.remove(column);
+            }
+            applyTableEdit(current);
+        });
+
+        menu.exec(widget->viewport()->mapToGlobal(pos));
+    });
+
+    table.widget = widget;
+}
+
+int MarkdownEditor::tableIndexFor(const QTableWidget *widget) const
+{
+    for (int index = 0; index < m_tables.size(); ++index) {
+        if (m_tables.at(index).widget == widget)
+            return index;
+    }
+    return -1;
+}
+
+void MarkdownEditor::applyTableEdit(int index)
+{
+    if (index < 0 || index >= m_tables.size())
+        return;
+    TableInfo &table = m_tables[index];
+    QTableWidget *widget = table.widget;
+    if (!widget)
+        return;
+
+    const int columns = widget->columnCount();
+    QStringList headerCells;
+    for (int column = 0; column < columns; ++column) {
+        const QTableWidgetItem *item = widget->item(0, column);
+        headerCells << (item ? item->text().trimmed() : QString());
+    }
+
+    QStringList separatorCells;
+    for (int column = 0; column < columns; ++column) {
+        switch (table.alignments.value(column, Qt::AlignLeft)) {
+        case Qt::AlignHCenter:
+            separatorCells << QStringLiteral(":---:");
+            break;
+        case Qt::AlignRight:
+            separatorCells << QStringLiteral("---:");
+            break;
+        default:
+            separatorCells << QStringLiteral("---");
+            break;
+        }
+    }
+
+    QStringList lines;
+    lines << (QStringLiteral("| ") + headerCells.join(QStringLiteral(" | ")) + QStringLiteral(" |"));
+    lines << (QStringLiteral("| ") + separatorCells.join(QStringLiteral(" | "))
+              + QStringLiteral(" |"));
+
+    for (int row = 1; row < widget->rowCount(); ++row) {
+        QStringList cells;
+        for (int column = 0; column < columns; ++column) {
+            const QTableWidgetItem *item = widget->item(row, column);
+            cells << (item ? item->text().trimmed() : QString());
+        }
+        lines << (QStringLiteral("| ") + cells.join(QStringLiteral(" | ")) + QStringLiteral(" |"));
+    }
+
+    replaceTableText(index, lines);
+}
+
+void MarkdownEditor::replaceTableText(int index, const QStringList &lines)
+{
+    if (index < 0 || index >= m_tables.size() || lines.isEmpty())
+        return;
+
+    TableInfo &table = m_tables[index];
+    const QTextBlock first = document()->findBlockByNumber(table.firstBlock);
+    const QTextBlock last = document()->findBlockByNumber(table.lastBlock);
+    if (!first.isValid() || !last.isValid())
+        return;
+
+    const int oldCount = table.lastBlock - table.firstBlock + 1;
+    const int delta = lines.size() - oldCount;
+
+    m_updatingTable = true;
+    QTextCursor cursor(first);
+    cursor.beginEditBlock();
+    cursor.setPosition(first.position());
+    cursor.setPosition(last.position() + last.text().length(), QTextCursor::KeepAnchor);
+    cursor.insertText(lines.join(QLatin1Char('\n')));
+    cursor.endEditBlock();
+    m_updatingTable = false;
+    m_skipTableRebuild = true;
+
+    table.lastBlock = table.firstBlock + lines.size() - 1;
+    for (int other = index + 1; other < m_tables.size(); ++other) {
+        m_tables[other].firstBlock += delta;
+        m_tables[other].lastBlock += delta;
+    }
+
+    positionTableWidgets();
+}
+
+QRectF MarkdownEditor::tableRect(const TableInfo &table) const
+{
+    const QTextBlock first = document()->findBlockByNumber(table.firstBlock);
+    const QTextBlock last = document()->findBlockByNumber(table.lastBlock);
+    if (!first.isValid() || !last.isValid())
+        return QRectF();
+
+    const QRectF top = blockBoundingGeometry(first).translated(contentOffset());
+    const QRectF bottom = blockBoundingGeometry(last).translated(contentOffset());
+    return QRectF(3, top.top() - 2, viewport()->width() - 6, bottom.bottom() - top.top() + 4);
+}
+
+void MarkdownEditor::positionTableWidgets()
+{
+    const QRectF visible(viewport()->rect());
+    for (TableInfo &table : m_tables) {
+        if (!table.widget)
+            continue;
+        const QRectF rect = tableRect(table);
+        if (!rect.isValid() || m_sourceMode) {
+            table.widget->hide();
+            continue;
+        }
+        table.widget->setGeometry(rect.toRect());
+        table.widget->setVisible(rect.intersects(visible));
+    }
+}
+
