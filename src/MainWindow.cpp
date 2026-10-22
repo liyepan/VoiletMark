@@ -340,17 +340,17 @@ void MainWindow::createSidebar()
         return button;
     };
 
-    m_gitPullButton = makeGitButton(tr("拉取"), tr("git pull --ff-only"));
     m_gitFetchButton = makeGitButton(tr("获取"), tr("git fetch --all --prune"));
-    m_gitPushButton = makeGitButton(tr("推送"), tr("git push"));
-    m_gitStageButton = makeGitButton(tr("暂存"), tr("git add -A"));
+    m_gitPullButton = makeGitButton(tr("拉取"), tr("git pull --ff-only"));
+    m_gitStageButton = makeGitButton(tr("添加"), tr("git add -A"));
     m_gitCommitButton = makeGitButton(tr("提交"), tr("把暂存区的内容提交"));
+    m_gitPushButton = makeGitButton(tr("推送"), tr("git push"));
 
-    gitLayout->addWidget(m_gitPullButton, 1, 0);
-    gitLayout->addWidget(m_gitFetchButton, 1, 1);
-    gitLayout->addWidget(m_gitPushButton, 1, 2);
-    gitLayout->addWidget(m_gitStageButton, 2, 0);
-    gitLayout->addWidget(m_gitCommitButton, 2, 1, 1, 2);
+    gitLayout->addWidget(m_gitFetchButton, 1, 0);
+    gitLayout->addWidget(m_gitPullButton, 1, 1);
+    gitLayout->addWidget(m_gitStageButton, 1, 2);
+    gitLayout->addWidget(m_gitCommitButton, 2, 0, 1, 2);
+    gitLayout->addWidget(m_gitPushButton, 2, 2);
 
     layout->addWidget(m_gitBar);
     m_gitBar->setVisible(false);

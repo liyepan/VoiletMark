@@ -8,6 +8,7 @@
 #include <QTextBlockFormat>
 #include <QTextCharFormat>
 #include <QTextFrame>
+#include <QTextTable>
 #include <QTextCursor>
 #include <QTextDocument>
 
@@ -43,12 +44,38 @@ struct Style
     QColor codeText = hex("#24292f");
     QColor codeBg = hex("#f3f4f6");
     QColor border = hex("#d0d7de");
+    QColor tableHeader = hex("#f6f8fa");
+    QColor keyword = hex("#0550ae");
+    QColor string = hex("#0a7d3a");
+    QColor number = hex("#953800");
+    QColor comment = hex("#6e7781");
+    QColor preprocessor = hex("#8250df");
     QColor link = hex("#0969da");
     QColor marker = hex("#0969da");
 };
 
 constexpr qreal kBodySize = 11.5;
 constexpr qreal kCodeSize = 10.5;
+
+bool isTableSeparator(const QString &text)
+{
+    static const QRegularExpression pattern(
+        QStringLiteral(R"(^\s*\|?\s*:?-{2,}:?\s*(?:\|\s*:?-{2,}:?\s*)+\|?\s*$)"));
+    return pattern.match(text).hasMatch();
+}
+
+QStringList splitTableRow(const QString &line)
+{
+    QString text = line.trimmed();
+    if (text.startsWith(QLatin1Char('|')))
+        text.remove(0, 1);
+    if (text.endsWith(QLatin1Char('|')))
+        text.chop(1);
+    QStringList cells = text.split(QLatin1Char('|'));
+    for (QString &cell : cells)
+        cell = cell.trimmed();
+    return cells;
+}
 
 class Renderer
 {
@@ -67,6 +94,8 @@ private:
     void renderParagraph(const QString &text, int quoteDepth);
     void renderListItem(const QString &marker, const QString &text, int indentLevel);
     void renderCodeBlock(const QStringList &lines, const QString &info);
+    void renderTable(const QStringList &rows, const QString &separator);
+    QColor tokenColor(CodeHighlight::Token token) const;
     void renderRule();
     void renderInline(const QString &text, const QTextCharFormat &base);
 
@@ -217,14 +246,135 @@ void Renderer::renderCodeBlock(const QStringList &lines, const QString &info)
     if (content.isEmpty())
         content << QString();
 
+    const CodeHighlight::Language codeLanguage = CodeHighlight::fromInfoString(info);
+    bool inComment = false;
+
     for (const QString &line : content) {
         insideBlock(codeBlock, format);
-        frameCursor.insertText(line.isEmpty() ? QStringLiteral(" ") : line, format);
+
+        bool endsInComment = inComment;
+        int position = 0;
+
+        if (codeLanguage != CodeHighlight::Language::None) {
+            const QVector<CodeHighlight::Span> spans =
+                CodeHighlight::tokenize(line, codeLanguage, inComment, &endsInComment);
+            for (const CodeHighlight::Span &span : spans) {
+                if (span.start > position)
+                    frameCursor.insertText(line.mid(position, span.start - position), format);
+
+                QTextCharFormat tokenFormat = format;
+                tokenFormat.setForeground(tokenColor(span.token));
+                frameCursor.insertText(line.mid(span.start, span.length), tokenFormat);
+                position = span.start + span.length;
+            }
+        }
+        inComment = endsInComment;
+
+        if (position < line.size())
+            frameCursor.insertText(line.mid(position), format);
+        if (line.isEmpty())
+            frameCursor.insertText(QStringLiteral(" "), format);
     }
 
     // 光标挪到边框外面，后面的内容接着写
     m_cursor = QTextCursor(m_document);
     m_cursor.setPosition(frame->lastPosition());
+}
+
+QColor Renderer::tokenColor(CodeHighlight::Token token) const
+{
+    switch (token) {
+    case CodeHighlight::Token::Keyword:
+    case CodeHighlight::Token::Type:
+        return m_style.keyword;
+    case CodeHighlight::Token::String:
+        return m_style.string;
+    case CodeHighlight::Token::Number:
+        return m_style.number;
+    case CodeHighlight::Token::Comment:
+        return m_style.comment;
+    case CodeHighlight::Token::Preprocessor:
+        return m_style.preprocessor;
+    }
+    return m_style.codeText;
+}
+
+void Renderer::renderTable(const QStringList &rows, const QString &separator)
+{
+    if (rows.isEmpty())
+        return;
+
+    if (m_firstBlock) {
+        QTextBlockFormat emptyFormat;
+        beginBlock(emptyFormat, bodyFormat());
+    }
+
+    const QStringList headerCells = splitTableRow(rows.first());
+    const int columns = qMax(1, headerCells.size());
+
+    QVector<Qt::Alignment> alignments;
+    for (const QString &cell : splitTableRow(separator)) {
+        const bool left = cell.startsWith(QLatin1Char(':'));
+        const bool right = cell.endsWith(QLatin1Char(':'));
+        if (left && right)
+            alignments.append(Qt::AlignHCenter);
+        else if (right)
+            alignments.append(Qt::AlignRight);
+        else
+            alignments.append(Qt::AlignLeft);
+    }
+
+    QTextTableFormat tableFormat;
+    tableFormat.setBorder(1);
+    tableFormat.setBorderBrush(m_style.border);
+    tableFormat.setBorderStyle(QTextFrameFormat::BorderStyle_Solid);
+    tableFormat.setCellSpacing(0);
+    tableFormat.setCellPadding(6);
+    tableFormat.setWidth(QTextLength(QTextLength::PercentageLength, 100));
+    tableFormat.setTopMargin(6);
+    tableFormat.setBottomMargin(12);
+
+    QTextTable *table = m_cursor.insertTable(rows.size(), columns, tableFormat);
+    for (int row = 0; row < rows.size(); ++row) {
+        const QStringList cells = (row == 0) ? headerCells : splitTableRow(rows.at(row));
+        for (int column = 0; column < columns; ++column) {
+            QTextTableCell cell = table->cellAt(row, column);
+
+            QTextTableCellFormat cellFormat = cell.format().toTableCellFormat();
+            cellFormat.setBackground(row == 0 ? m_style.tableHeader : m_style.codeBg.lighter(104));
+            cellFormat.setTopBorder(1);
+            cellFormat.setBottomBorder(1);
+            cellFormat.setLeftBorder(1);
+            cellFormat.setRightBorder(1);
+            cellFormat.setTopBorderBrush(m_style.border);
+            cellFormat.setBottomBorderBrush(m_style.border);
+            cellFormat.setLeftBorderBrush(m_style.border);
+            cellFormat.setRightBorderBrush(m_style.border);
+            cellFormat.setTopBorderStyle(QTextFrameFormat::BorderStyle_Solid);
+            cellFormat.setBottomBorderStyle(QTextFrameFormat::BorderStyle_Solid);
+            cellFormat.setLeftBorderStyle(QTextFrameFormat::BorderStyle_Solid);
+            cellFormat.setRightBorderStyle(QTextFrameFormat::BorderStyle_Solid);
+            cell.setFormat(cellFormat);
+
+            QTextCursor cellCursor = cell.firstCursorPosition();
+            QTextBlockFormat blockFormat;
+            blockFormat.setAlignment(alignments.value(column, Qt::AlignLeft));
+            cellCursor.setBlockFormat(blockFormat);
+
+            QTextCharFormat charFormat;
+            charFormat.setFontFamilies(proseFamilies());
+            charFormat.setFontPointSize(kBodySize);
+            charFormat.setForeground(m_style.text);
+            if (row == 0) {
+                charFormat.setFontWeight(QFont::Bold);
+                charFormat.setForeground(m_style.heading);
+            }
+            cellCursor.insertText(cells.value(column), charFormat);
+        }
+    }
+
+    m_cursor = QTextCursor(m_document);
+    m_cursor.setPosition(table->lastPosition());
 }
 
 void Renderer::renderRule()
@@ -364,6 +514,21 @@ void Renderer::run(const QString &markdown)
     int index = 0;
     while (index < lines.size()) {
         const QString line = lines.at(index);
+
+        // 表格：当前行有 |，下一行是 |---|
+        if (line.contains(QLatin1Char('|')) && index + 1 < lines.size()
+            && isTableSeparator(lines.at(index + 1))) {
+            QStringList rows{line};
+            int next = index + 2;
+            while (next < lines.size() && !lines.at(next).trimmed().isEmpty()
+                   && lines.at(next).contains(QLatin1Char('|'))) {
+                rows << lines.at(next);
+                ++next;
+            }
+            renderTable(rows, lines.at(index + 1));
+            index = next;
+            continue;
+        }
 
         const QRegularExpressionMatch fence = fencePattern.match(line);
         if (fence.hasMatch()) {
