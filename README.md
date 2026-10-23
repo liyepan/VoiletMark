@@ -2,7 +2,7 @@
 
 一个轻量的跨平台 Markdown 编辑器，基于 **Qt 5 / C++17** 构建。
 
-当前版本 **0.12.1**。
+当前版本 **0.12.2**。
 
 ## 界面
 
@@ -205,6 +205,46 @@ make -C build install INSTALL_ROOT=/tmp/pkg # 打包用，装到 /tmp/pkg/usr/lo
 会一起装上可执行文件、`voiletmark.desktop` 和 256×256 图标，
 装完就能在应用菜单里搜到 VoiletMark。
 
+## 打包（Linux）
+
+`.github/workflows/linux-packages.yml` 是给 GitHub 镜像用的：它会编译代码并打出
+`.deb` 和 `.rpm`（本仓库在 Gitea 上，Gitea 不跑这个工作流）。
+
+- 触发方式：推送到 `main`、打 tag（`v*`）、手动 **Actions → Linux 安装包 → Run workflow**、PR 检查
+- x86_64（`ubuntu-22.04`）：`voiletmark_<版本>_amd64.deb` 和 `voiletmark-<版本>-1.x86_64.rpm`
+- aarch64（`ubuntu-24.04-arm`）：`..._arm64.deb` 和 `...aarch64.rpm`。这个 runner 公共仓库才有；
+  私有仓库里 ARM 那一步设成了 `continue-on-error`，失败不会影响 x86_64 的包，
+  也可以把 `runs-on` 换成自建的 arm64 runner
+- 每次构建都会上传 artifact；打 tag 时自动把安装包和 `SHA256SUMS` 挂到对应的 Release
+
+本地打包（版本号从 `VoiletMark.pro` 里取）：
+
+```bash
+mkdir -p build && cd build
+qmake ../VoiletMark.pro PREFIX=/usr && make -j"$(nproc)"
+make install INSTALL_ROOT="$PWD/stage"
+
+version=$(sed -n 's/^VERSION[[:space:]]*=[[:space:]]*//p' ../VoiletMark.pro | head -n1)
+../packaging/build-deb.sh stage "$version" amd64 ../dist
+../packaging/build-rpm.sh stage "$version" x86_64 ../dist
+```
+
+装包：
+
+```bash
+sudo apt install ./voiletmark_*_amd64.deb
+sudo dnf install ./voiletmark-*.x86_64.rpm
+```
+
+要出 Release 就打个 tag（同步到 GitHub 时记得把 tag 一起推过去）：
+
+```bash
+git tag v0.12.2 && git push origin v0.12.2
+```
+
+打 rpm 需要 `rpmbuild`（Ubuntu 上 `apt install rpm`）。rpm 的 `License` 字段现在写的是
+`Proprietary`（仓库里还没放 LICENSE 文件），要换许可证改 `packaging/build-rpm.sh` 里那一行即可。
+
 ## 图标
 
 `logo.png` 是源文件，`packaging/generate_icons.py` 从它生成各平台图标。
@@ -265,7 +305,8 @@ src/
 logo.png              图标源文件
 resources.qrc         窗口图标与翻译资源
 translations/         中英文翻译（.ts / .qm）
-packaging/            各平台图标（ico / icns / png）与 .desktop
+packaging/            图标生成、.desktop、deb / rpm 打包脚本
+.github/workflows/    GitHub Actions：编译 + 打 deb / rpm
 ```
 
 ## 下一版计划

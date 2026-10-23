@@ -12,6 +12,11 @@ ui_*.h
 *.pro.user
 *.pro.user.*
 
+# 本地打出来的安装包
+/dist/
+*.deb
+*.rpm
+
 # 构建工具
 compile_commands.json
 CMakeLists.txt.user
