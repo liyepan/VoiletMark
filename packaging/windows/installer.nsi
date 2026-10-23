@@ -1,4 +1,4 @@
-; VoiletMark Windows 安装包（未签名）
+﻿; VoiletMark Windows 安装包（未签名）
 ; 按当前用户安装（不需要管理员权限），默认装到 %LOCALAPPDATA%\Programs\VoiletMark
 Unicode true
 !include "MUI2.nsh"
