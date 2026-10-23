@@ -13,6 +13,10 @@ fi
 frameworks=$app/Contents/Frameworks
 mkdir -p "$frameworks"
 
+list_macho() {
+    find "$app" -type f \( -perm -111 -o -name '*.dylib' \) -print
+}
+
 round=0
 while [ "$round" -lt 12 ]; do
     round=$((round + 1))
@@ -26,21 +30,31 @@ while [ "$round" -lt 12 ]; do
                     if [ ! -f "$frameworks/$base" ]; then
                         cp "$dep" "$frameworks/$base"
                         chmod 755 "$frameworks/$base"
-                        install_name_tool -id "@executable_path/../Frameworks/$base" "$frameworks/$base" >/dev/null 2>&1 || true
+                        install_name_tool -id "@executable_path/../Frameworks/$base" "$frameworks/$base" 2>/dev/null || true
                         changed=1
                     fi
-                    install_name_tool -change "$dep" "@executable_path/../Frameworks/$base" "$file" >/dev/null 2>&1 || true
+                    if ! install_name_tool -change "$dep" "@executable_path/../Frameworks/$base" "$file" 2>/dev/null; then
+                        echo "改写引用失败: $file <- $dep" >&2
+                    fi
                     ;;
             esac
-        done < <(otool -L "$file" | tail -n +2 | awk '{print $1}')
-    done < <(find "$app" -type f \( -perm -111 -o -name '*.dylib' \) -print)
+        done < <(otool -L "$file" 2>/dev/null | tail -n +2 | awk '{print $1}')
+    done < <(list_macho)
 
     [ "$changed" -eq 1 ] || break
 done
 
-left=$(find "$app" -type f \( -perm -111 -o -name '*.dylib' \) -exec otool -L {} + 2>/dev/null | grep -E '^[[:space:]]*(/opt/homebrew|/usr/local)/' | wc -l | tr -d ' ')
-if [ "$left" -ne 0 ]; then
-    echo "还有 $left 个 Homebrew 依赖没处理：" >&2
-    find "$app" -type f \( -perm -111 -o -name '*.dylib' \) -exec otool -L {} + 2>/dev/null | grep -E '^[[:space:]]*(/opt/homebrew|/usr/local)/' | head -20 >&2
+remaining=$(mktemp)
+while IFS= read -r file; do
+    otool -L "$file" 2>/dev/null | tail -n +2 \
+        | awk -v f="$file" '$1 ~ /^\/(opt\/homebrew|usr\/local)\// { print f ": " $1 }'
+done < <(list_macho) > "$remaining"
+
+if [ -s "$remaining" ]; then
+    echo "还有 Homebrew 依赖没处理：" >&2
+    head -30 "$remaining" >&2
+    rm -f "$remaining"
     exit 1
 fi
+rm -f "$remaining"
+echo "Homebrew 依赖已经收进 app"

@@ -1,10 +1,13 @@
 TEMPLATE = app
 TARGET   = VoiletMark
-VERSION  = 0.12.4
+VERSION  = 0.12.5
 
 QT += core gui widgets
 
 CONFIG += c++17 warn_on
+
+# 源码是 UTF-8（含中文和 ▾ 之类的符号），MSVC 默认按本地代码页会串码 / 报 C4566
+msvc: QMAKE_CXXFLAGS += /utf-8
 
 # 让 main.cpp 里的 QStringLiteral(VM_VERSION) 拿到版本号字符串
 DEFINES += VM_VERSION=\\\"$$VERSION\\\"

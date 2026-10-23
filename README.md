@@ -2,7 +2,7 @@
 
 一个轻量的跨平台 Markdown 编辑器，基于 **Qt 5 / C++17** 构建。
 
-当前版本 **0.12.4**。
+当前版本 **0.12.5**。
 
 ## 界面
 
@@ -231,7 +231,7 @@ PR 或手动运行时编译，并打出下面这些安装包。
 
 ### 发 Release
 
-- 打 tag：`git tag v0.12.4 && git push origin v0.12.4`（同步到 GitHub 时把 tag 一起推过去）
+- 打 tag：`git tag v0.12.5 && git push origin v0.12.4`（同步到 GitHub 时把 tag 一起推过去）
 - 不打 tag：**Actions → 安装包 → Run workflow**，勾上 **publish**，会用 `v<版本>` 当 tag
 - 普通推送 / PR 只上传 artifact，不发 Release——「发布到 Release」显示 skipped 是正常的
 

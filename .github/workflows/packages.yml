@@ -135,6 +135,18 @@ jobs:
 
           mkdir -p build
           cd build
+          # Git Bash 的 /usr/bin 里也有个 link.exe（coreutils 的硬链接工具），
+          # 必须把 MSVC 的 bin 放到 PATH 最前面，nmake 才会用真正的 link.exe
+          cl_path=$(command -v cl.exe || command -v cl || true)
+          if [ -z "$cl_path" ]; then
+            echo "PATH 里找不到 cl.exe" >&2
+            exit 1
+          fi
+          msvc_bin=$(dirname "$cl_path")
+          export PATH="$msvc_bin:$PATH"
+          echo "cl: $(command -v cl)"
+          echo "link: $(command -v link)"
+
           qmake ../VoiletMark.pro CONFIG+=release
           nmake release || nmake
           if [ -f release/VoiletMark.exe ]; then
@@ -236,6 +248,18 @@ jobs:
           grep -q arm64 /tmp/arch.txt
 
           "$QT_PREFIX/bin/macdeployqt" VoiletMark.app -always-overwrite
+
+          # 只留平台插件和样式插件；虚拟键盘 / 打印 / 图片格式这些用不到，
+          # 留着只会把 Homebrew 的 dylib 拖进来
+          rm -rf VoiletMark.app/Contents/PlugIns/virtualkeyboard \
+                 VoiletMark.app/Contents/PlugIns/platforminputcontexts \
+                 VoiletMark.app/Contents/PlugIns/printsupport \
+                 VoiletMark.app/Contents/PlugIns/iconengines \
+                 VoiletMark.app/Contents/PlugIns/imageformats \
+                 VoiletMark.app/Contents/PlugIns/networkinformation \
+                 VoiletMark.app/Contents/PlugIns/tls \
+                 VoiletMark.app/Contents/PlugIns/bearer
+
           otool -L VoiletMark.app/Contents/MacOS/VoiletMark | head -30
 
       - name: 收 Homebrew 依赖 + ad-hoc 签名
@@ -291,6 +315,15 @@ jobs:
           grep -q x86_64 /tmp/arch.txt
 
           macdeployqt VoiletMark.app -always-overwrite
+
+          rm -rf VoiletMark.app/Contents/PlugIns/virtualkeyboard \
+                 VoiletMark.app/Contents/PlugIns/platforminputcontexts \
+                 VoiletMark.app/Contents/PlugIns/printsupport \
+                 VoiletMark.app/Contents/PlugIns/iconengines \
+                 VoiletMark.app/Contents/PlugIns/imageformats \
+                 VoiletMark.app/Contents/PlugIns/networkinformation \
+                 VoiletMark.app/Contents/PlugIns/tls \
+                 VoiletMark.app/Contents/PlugIns/bearer
 
       - name: 收依赖 + ad-hoc 签名
         run: |
