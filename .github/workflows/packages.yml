@@ -1,8 +1,10 @@
 name: 安装包
 
 # 同步到 GitHub 后，这里编译并打出：
-# 注意：Gitea Actions 也会读 .github/workflows，不想在 Gitea 跑需要在
-# Gitea 仓库设置里禁用 Actions / 该工作流（详见 README「打包（安装包）」）。
+# 注意：Gitea Actions 也会读 .github/workflows，所以每个 job 都有
+#   if: github.server_url == 'https://github.com'
+# 的守卫，在 Gitea 上只会显示成 skipped，不占 runner；要连 run 都不出现，
+# 需要在 Gitea 仓库设置里禁用 Actions / 该工作流（详见 README）。
 #   Linux   deb / rpm（x86_64、aarch64）
 #   Windows 安装包（关联 .md）+ 便携 zip
 #   macOS   arm64 / x86_64 两个 dmg（未签名，不是公证版）
@@ -12,18 +14,14 @@ on:
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
-    inputs:
-      publish:
-        description: "发布 Release（用 v<版本> 当 tag，不必先打 tag）"
-        type: boolean
-        default: false
 
 permissions:
   contents: write
 
 concurrency:
   group: packages-${{ github.ref }}
-  cancel-in-progress: true
+  # 不要把正在发 Release 的 run 掐掉，否则可能留下半截草稿
+  cancel-in-progress: false
 
 env:
   QT_VERSION: "5.15.2"
@@ -31,6 +29,8 @@ env:
 jobs:
   linux:
     name: Linux ${{ matrix.arch }}
+    # Gitea 也会读这个文件；非 github.com 的 server 直接跳过，别占 Gitea 的 runner
+    if: ${{ github.server_url == 'https://github.com' }}
     runs-on: ${{ matrix.runs-on }}
     continue-on-error: ${{ matrix.optional }}
     timeout-minutes: 30
@@ -106,6 +106,7 @@ jobs:
 
   windows:
     name: Windows x86_64
+    if: ${{ github.server_url == 'https://github.com' }}
     runs-on: windows-2022
     timeout-minutes: 40
     steps:
@@ -217,6 +218,7 @@ jobs:
 
   macos-arm64:
     name: macOS arm64 (Apple Silicon)
+    if: ${{ github.server_url == 'https://github.com' }}
     runs-on: macos-15
     timeout-minutes: 50
     env:
@@ -287,6 +289,7 @@ jobs:
   macos-x86_64:
     name: macOS x86_64 (Intel)
     # Intel 的 GitHub runner；拿不到这个 runner 时这一步会失败，不影响其它产物
+    if: ${{ github.server_url == 'https://github.com' }}
     runs-on: macos-15-intel
     timeout-minutes: 40
     steps:
@@ -352,11 +355,12 @@ jobs:
     needs: [linux, windows, macos-arm64, macos-x86_64]
     # 打 tag 或手动勾 publish 才发；普通推送/PR 只留 artifact。
     # always() 是为了某个平台失败时其它产物还能发出来。
+    # 推 main / 打 tag / 手动运行都自动发 Release（PR 不发）；
+    # 非 github.com（比如 Gitea）直接跳过。always() 保证某个平台失败时其它产物还能发。
     if: >-
-      always() && (
-        startsWith(github.ref, 'refs/tags/') ||
-        (github.event_name == 'workflow_dispatch' && inputs.publish)
-      )
+      always() && !cancelled() &&
+      github.server_url == 'https://github.com' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

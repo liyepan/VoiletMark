@@ -210,13 +210,23 @@ make -C build install INSTALL_ROOT=/tmp/pkg # 打包用，装到 /tmp/pkg/usr/lo
 `.github/workflows/packages.yml` 是给 GitHub 镜像用的：推代码、打 tag、PR 或手动运行时编译，
 并打出下面这些安装包。
 
-> **Gitea 也会读这个目录**：Gitea Actions 兼容 GitHub，默认同时扫描 `.gitea/workflows` 和
-> `.github/workflows`，光靠 YAML 没法让 Gitea 忽略它。要它不在 Gitea 跑，三选一：
->
-> - 仓库 **设置 → 高级设置** 里取消「启用 Actions」：整个仓库的 Actions 都停，GitHub 不受影响
-> - 或 **Actions → 安装包 → 禁用工作流**：只停这一个（Gitea 1.22+）
-> - 或服务器 `app.ini` 里设 `[actions] WORKFLOW_DIRS = .gitea/workflows`：Gitea 只读
->   `.gitea/workflows`，`.github/workflows` 就只对 GitHub 生效（需要支持该配置的版本）
+**Gitea 也会读这个目录**：Gitea Actions 兼容 GitHub，默认同时扫描 `.gitea/workflows` 和
+`.github/workflows`。工作流里每个 job 都加了 `github.server_url == 'https://github.com'` 的守卫，
+在 Gitea 上只会显示 skipped、不占 runner；要连 Actions 列表里的 run 都不出现，任选一个：
+
+- 仓库 **设置 → Actions → General**，取消勾选 **Enable Actions** 后保存（整个仓库的 Actions 全停）
+- 或 **Actions → 安装包** 页面点 **Disable Workflow**（只停这一个工作流）
+- 或服务器 `app.ini` 里设 `[actions] WORKFLOW_DIRS = .gitea/workflows`，Gitea 就只读
+  `.gitea/workflows`，`.github/workflows` 只对 GitHub 生效
+
+Gitea 1.27 也可以直接调 API（`TOKEN` 换成你的访问令牌，`<id>` 用列表里返回的值）：
+
+```bash
+curl -H "Authorization: token $TOKEN" \
+  https://git.linuxacme.com/api/v1/repos/liyepan/VoiletMark/actions/workflows
+curl -X PUT -H "Authorization: token $TOKEN" \
+  https://git.linuxacme.com/api/v1/repos/liyepan/VoiletMark/actions/workflows/<id>/disable
+```
 
 | 平台 | runner | 产物 |
 | --- | --- | --- |
@@ -239,9 +249,10 @@ make -C build install INSTALL_ROOT=/tmp/pkg # 打包用，装到 /tmp/pkg/usr/lo
 
 ### 发 Release
 
-- 打 tag：`git tag v0.12.5 && git push origin v0.12.4`（同步到 GitHub 时把 tag 一起推过去）
-- 不打 tag：**Actions → 安装包 → Run workflow**，勾上 **publish**，会用 `v<版本>` 当 tag
-- 普通推送 / PR 只上传 artifact，不发 Release——「发布到 Release」显示 skipped 是正常的
+- 推 main、打 tag、手动 Run workflow 都会**自动发 Release**（PR 不发）
+- tag 用 `v<版本>`，版本号在 `VoiletMark.pro` 的 `VERSION` 里；同一版本多次推送会更新同一个 Release 的安装包
+- 想发新版本就改 `VERSION`，下一次推送会自动建 `v<新版本>` 的 Release
+- Release 是正式发布（不是草稿 / 预发布），并设为 Latest
 
 ### 本地打包（Linux）
 
