@@ -35,6 +35,7 @@
 #include <QSaveFile>
 #include <QSettings>
 #include <QSignalBlocker>
+#include <QStackedWidget>
 #include <QStandardPaths>
 #include <QStatusBar>
 #include <QTextBlock>
@@ -322,17 +323,65 @@ void MainWindow::createSidebar()
     layout->setContentsMargins(8, 8, 8, 8);
     layout->setSpacing(6);
 
+    // 侧栏两种模式：文件 / 目录
+    QHBoxLayout *modeLayout = new QHBoxLayout();
+    modeLayout->setContentsMargins(0, 0, 0, 0);
+    modeLayout->setSpacing(4);
+
+    auto makeModeButton = [this, content](const QString &text) {
+        QToolButton *button = new QToolButton(content);
+        button->setText(text);
+        button->setCheckable(true);
+        button->setCursor(Qt::PointingHandCursor);
+        button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        return button;
+    };
+
+    m_fileModeButton = makeModeButton(tr("文件"));
+    m_tocModeButton = makeModeButton(tr("目录"));
+    m_fileModeButton->setChecked(true);
+    modeLayout->addWidget(m_fileModeButton);
+    modeLayout->addWidget(m_tocModeButton);
+    layout->addLayout(modeLayout);
+
+    connect(m_fileModeButton, &QToolButton::clicked, this, [this] { switchSidebarMode(0); });
+    connect(m_tocModeButton, &QToolButton::clicked, this, [this] { switchSidebarMode(1); });
+
     m_folderLabel = new QLabel(tr("未打开文件夹"), content);
     m_folderLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     layout->addWidget(m_folderLabel);
 
-    m_fileList = new QListWidget(content);
+    m_sidebarStack = new QStackedWidget(content);
+
+    m_fileList = new QListWidget(m_sidebarStack);
     m_fileList->setFrameShape(QFrame::NoFrame);
     m_fileList->setUniformItemSizes(true);
     m_fileList->setTextElideMode(Qt::ElideMiddle);
     m_fileList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_fileList->setContextMenuPolicy(Qt::CustomContextMenu);
-    layout->addWidget(m_fileList, 1);
+    m_sidebarStack->addWidget(m_fileList);
+
+    m_tocList = new QListWidget(m_sidebarStack);
+    m_tocList->setFrameShape(QFrame::NoFrame);
+    m_tocList->setTextElideMode(Qt::ElideRight);
+    m_tocList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_sidebarStack->addWidget(m_tocList);
+
+    layout->addWidget(m_sidebarStack, 1);
+
+    connect(m_tocList, &QListWidget::itemClicked, this, &MainWindow::goToTocItem);
+
+    m_tocTimer = new QTimer(this);
+    m_tocTimer->setSingleShot(true);
+    m_tocTimer->setInterval(250);
+    connect(m_tocTimer, &QTimer::timeout, this, [this] {
+        if (m_sidebarMode == 1)
+            rebuildToc();
+    });
+    connect(m_editor, &QPlainTextEdit::textChanged, this, [this] {
+        if (m_sidebarMode == 1)
+            m_tocTimer->start();
+    });
 
     // ---- Git 工具条：只有打开的是仓库时才显示 ----
     m_gitBar = new QWidget(content);
@@ -531,6 +580,10 @@ void MainWindow::loadSettings()
     m_themeLightAction->setChecked(mode == ThemeManager::Mode::Light);
     m_themeDarkAction->setChecked(mode == ThemeManager::Mode::Dark);
     m_themeScheduleAction->setChecked(mode == ThemeManager::Mode::Schedule);
+
+    const int sidebarMode =
+        settings.value(QStringLiteral("window/sidebarMode"), 0).toInt();
+    switchSidebarMode(sidebarMode);
 
     m_folderPath = settings.value(QStringLiteral("files/folder")).toString();
     if (!m_folderPath.isEmpty() && QFileInfo(m_folderPath).isDir())
@@ -1223,7 +1276,7 @@ void MainWindow::updateGitState()
         m_git->setWorkingDirectory(m_gitRoot.isEmpty() ? m_folderPath : m_gitRoot);
 
     if (m_gitBar) {
-        m_gitBar->setVisible(!m_gitRoot.isEmpty());
+        m_gitBar->setVisible(!m_gitRoot.isEmpty() && m_sidebarMode == 0);
         m_gitStatusLabel->setText(m_gitBranch.isEmpty() ? tr("Git 仓库") : m_gitBranch);
         m_gitStatusLabel->setToolTip(m_gitRoot);
     }
@@ -1283,6 +1336,89 @@ void MainWindow::onGitFinished(bool ok, const QString &label, const QString &out
     } else {
         runNextGit();
     }
+}
+
+void MainWindow::switchSidebarMode(int mode)
+{
+    m_sidebarMode = qBound(0, mode, 1);
+
+    if (m_sidebarStack)
+        m_sidebarStack->setCurrentIndex(m_sidebarMode);
+    if (m_fileModeButton && m_tocModeButton) {
+        m_fileModeButton->setChecked(m_sidebarMode == 0);
+        m_tocModeButton->setChecked(m_sidebarMode == 1);
+    }
+    if (m_folderLabel)
+        m_folderLabel->setVisible(m_sidebarMode == 0);
+    if (m_gitBar)
+        m_gitBar->setVisible(m_sidebarMode == 0 && !m_gitRoot.isEmpty());
+
+    if (m_sidebarMode == 1)
+        rebuildToc();
+
+    QSettings().setValue(QStringLiteral("window/sidebarMode"), m_sidebarMode);
+}
+
+void MainWindow::rebuildToc()
+{
+    if (!m_tocList || !m_editor)
+        return;
+
+    m_tocList->clear();
+
+    static const QRegularExpression headingPattern(
+        QStringLiteral(R"(^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$)"));
+    static const QRegularExpression fencePattern(
+        QStringLiteral("^\\s{0,3}(?:\\x60\\x60\\x60|~~~)"));
+
+    bool inFence = false;
+    QTextBlock block = m_editor->document()->firstBlock();
+    while (block.isValid()) {
+        const QString text = block.text();
+
+        if (fencePattern.match(text).hasMatch()) {
+            inFence = !inFence;
+            block = block.next();
+            continue;
+        }
+
+        if (!inFence) {
+            const QRegularExpressionMatch match = headingPattern.match(text);
+            if (match.hasMatch()) {
+                const int level = match.capturedLength(1);
+                QListWidgetItem *item = new QListWidgetItem(
+                    QString(level - 1, QChar(0x2003)) + match.captured(2).trimmed(), m_tocList);
+                item->setData(Qt::UserRole, block.blockNumber());
+                item->setToolTip(match.captured(2).trimmed());
+                if (level <= 2) {
+                    QFont font = item->font();
+                    font.setBold(true);
+                    item->setFont(font);
+                } else {
+                    QFont font = item->font();
+                    font.setPointSizeF(qMax(7.0, font.pointSizeF() - 0.5));
+                    item->setFont(font);
+                }
+            }
+        }
+
+        block = block.next();
+    }
+
+    if (m_tocList->count() == 0) {
+        QListWidgetItem *empty = new QListWidgetItem(tr("（没有标题）"), m_tocList);
+        empty->setFlags(Qt::NoItemFlags);
+    }
+}
+
+void MainWindow::goToTocItem(QListWidgetItem *item)
+{
+    if (!item)
+        return;
+    const QVariant data = item->data(Qt::UserRole);
+    if (!data.isValid())
+        return;
+    m_editor->goToBlock(data.toInt());
 }
 
 void MainWindow::gitPull()

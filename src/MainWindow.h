@@ -9,6 +9,8 @@ class QActionGroup;
 class QDockWidget;
 class QLabel;
 class QPushButton;
+class QStackedWidget;
+class QToolButton;
 class GitRunner;
 class QListWidget;
 class QListWidgetItem;
@@ -69,6 +71,10 @@ private:
     void gitIgnoreFile(const QString &path);
     void gitRemoveRemote(const QString &path);
     void gitCommit();
+
+    void switchSidebarMode(int mode);
+    void rebuildToc();
+    void goToTocItem(QListWidgetItem *item);
     void gitPull();
     void gitFetch();
     void gitPush();
@@ -101,6 +107,13 @@ private:
     QLabel *m_folderLabel = nullptr;
     QToolButton *m_sourceButton = nullptr;
     QToolButton *m_sidebarButton = nullptr;
+
+    QStackedWidget *m_sidebarStack = nullptr;
+    QToolButton *m_fileModeButton = nullptr;
+    QToolButton *m_tocModeButton = nullptr;
+    QListWidget *m_tocList = nullptr;
+    QTimer *m_tocTimer = nullptr;
+    int m_sidebarMode = 0;
 
     GitRunner *m_git = nullptr;
     QWidget *m_gitBar = nullptr;

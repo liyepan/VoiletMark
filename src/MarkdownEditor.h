@@ -39,6 +39,9 @@ public:
     /// 把选中内容包成围栏代码块；如果已经围起来了则拆掉。
     void toggleCodeBlock();
 
+    /// 把光标移到指定行并居中显示（目录跳转用）。
+    void goToBlock(int blockNumber);
+
 signals:
     void zoomStepRequested(int direction);
     void fileDropped(const QString &path);

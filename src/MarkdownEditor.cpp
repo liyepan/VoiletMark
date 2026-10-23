@@ -367,6 +367,19 @@ void MarkdownEditor::selectBlocks(int firstBlock, int lastBlock)
     setTextCursor(cursor);
 }
 
+void MarkdownEditor::goToBlock(int blockNumber)
+{
+    const QTextBlock block = document()->findBlockByNumber(blockNumber);
+    if (!block.isValid())
+        return;
+
+    QTextCursor cursor(block);
+    cursor.movePosition(QTextCursor::StartOfBlock);
+    setTextCursor(cursor);
+    centerCursor();
+    setFocus();
+}
+
 void MarkdownEditor::setHeadingLevel(int level)
 {
     level = qBound(0, level, 6);
