@@ -2,7 +2,7 @@
 
 一个轻量的跨平台 Markdown 编辑器，基于 **Qt 5 / C++17** 构建。
 
-当前版本 **0.12.3**。
+当前版本 **0.12.4**。
 
 ## 界面
 
@@ -205,24 +205,39 @@ make -C build install INSTALL_ROOT=/tmp/pkg # 打包用，装到 /tmp/pkg/usr/lo
 会一起装上可执行文件、`voiletmark.desktop` 和 256×256 图标，
 装完就能在应用菜单里搜到 VoiletMark。
 
-## 打包（Linux）
+## 打包（安装包）
 
-`.github/workflows/linux-packages.yml` 是给 GitHub 镜像用的：它会编译代码并打出
-`.deb` 和 `.rpm`（本仓库在 Gitea 上，Gitea 不跑这个工作流）。
+`.github/workflows/packages.yml` 是给 GitHub 镜像用的（Gitea 上不跑）：推代码、打 tag、
+PR 或手动运行时编译，并打出下面这些安装包。
 
-- 触发方式：推送到 `main`、打 tag（`v*`）、手动 **Actions → Linux 安装包 → Run workflow**、PR 检查
-- x86_64（`ubuntu-22.04`）：`voiletmark_<版本>_amd64.deb` 和 `voiletmark-<版本>-1.x86_64.rpm`
-- aarch64（`ubuntu-24.04-arm`）：`..._arm64.deb` 和 `...aarch64.rpm`。这个 runner 公共仓库才有；
-  私有仓库里 ARM 那一步设成了 `continue-on-error`，失败不会影响 x86_64 的包，
-  也可以把 `runs-on` 换成自建的 arm64 runner
-- 每次构建都会上传 artifact
-- 发 Release 的两种方式：
-  - 打 tag：`git tag v0.12.3 && git push origin v0.12.3`（同步到 GitHub 时把 tag 一起推过去）
-  - 不打 tag：**Actions → Linux 安装包 → Run workflow**，把 **publish** 勾上，
-    它会用 `v<版本>` 当 tag（不存在就按当前提交新建）并发出 Release
-- 普通推送到 main / PR 只上传 artifact，不发 Release——「发布到 Release」显示 skipped 是正常的
+| 平台 | runner | 产物 |
+| --- | --- | --- |
+| Linux x86_64 | `ubuntu-22.04` | `voiletmark_<版本>_amd64.deb`、`voiletmark-<版本>-1.x86_64.rpm` |
+| Linux aarch64 | `ubuntu-24.04-arm` | `..._arm64.deb`、`...aarch64.rpm` |
+| Windows x86_64 | `windows-2022` | `VoiletMark-<版本>-win64-setup.exe`、`...-win64-portable.zip` |
+| macOS arm64 | `macos-15` | `VoiletMark-<版本>-macos-arm64.dmg` |
+| macOS x86_64 | `macos-15-intel` | `VoiletMark-<版本>-macos-x86_64.dmg` |
 
-本地打包（版本号从 `VoiletMark.pro` 里取）：
+说明：
+
+- Windows 安装包按当前用户装到 `%LOCALAPPDATA%\Programs\VoiletMark`，不需要管理员权限；
+  会把 `.md` 关联到 VoiletMark，卸载时清理快捷方式、注册表和（仍指向本程序的）关联
+- macOS 的 arm64 包是**原生**的，不依赖 Rosetta；Intel 包在 `macos-15-intel` 上用 Qt 5.15.2 官方二进制打
+- 两个 dmg 都没有签名 / 公证：第一次打开要右键 →「打开」，或去「系统设置 → 隐私与安全性」点「仍要打开」
+- Windows 安装包也没签名，SmartScreen 会拦一下（更多信息 → 仍要运行）
+- 如果 .md 在资源管理器里还指向别的程序：右键 →「打开方式」→「选择其他应用」→ 勾选用 VoiletMark 打开（Win8 之后 UserChoice 不允许安装包直接改）
+- Linux ARM 和 macOS Intel 的 runner 不是所有仓库都有；拿不到时那几个 job 会失败，不影响其它产物
+- 某个平台失败时 Release 仍会带上其它平台成功的包
+
+### 发 Release
+
+- 打 tag：`git tag v0.12.4 && git push origin v0.12.4`（同步到 GitHub 时把 tag 一起推过去）
+- 不打 tag：**Actions → 安装包 → Run workflow**，勾上 **publish**，会用 `v<版本>` 当 tag
+- 普通推送 / PR 只上传 artifact，不发 Release——「发布到 Release」显示 skipped 是正常的
+
+### 本地打包（Linux）
+
+版本号从 `VoiletMark.pro` 里取：
 
 ```bash
 mkdir -p build && cd build
@@ -243,6 +258,7 @@ sudo dnf install ./voiletmark-*.x86_64.rpm
 
 打 rpm 需要 `rpmbuild`（Ubuntu 上 `apt install rpm`）。rpm 的 `License` 字段现在写的是
 `Proprietary`（仓库里还没放 LICENSE 文件），要换许可证改 `packaging/build-rpm.sh` 里那一行即可。
+Windows / macOS 的安装包建议直接用 CI 打（本地需要 NSIS、Xcode / Homebrew Qt），这里不再展开。
 
 ## 图标
 
@@ -304,8 +320,8 @@ src/
 logo.png              图标源文件
 resources.qrc         窗口图标与翻译资源
 translations/         中英文翻译（.ts / .qm）
-packaging/            图标生成、.desktop、deb / rpm 打包脚本
-.github/workflows/    GitHub Actions：编译 + 打 deb / rpm
+packaging/            图标、.desktop、deb/rpm、NSIS、macOS dmg 打包脚本
+.github/workflows/    GitHub Actions：编译 + 打三平台安装包
 ```
 
 ## 下一版计划

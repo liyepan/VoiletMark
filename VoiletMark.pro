@@ -1,6 +1,6 @@
 TEMPLATE = app
 TARGET   = VoiletMark
-VERSION  = 0.12.3
+VERSION  = 0.12.4
 
 QT += core gui widgets
 
@@ -16,6 +16,8 @@ RESOURCES += resources.qrc
 # 各平台的可执行文件图标
 win32: RC_ICONS = packaging/voiletmark.ico
 macx:  ICON = packaging/voiletmark.icns
+macx:  QMAKE_TARGET_BUNDLE_PREFIX = com.linuxacme
+macx:  QMAKE_TARGET_DESCRIPTION = "VoiletMark Markdown Editor"
 
 SOURCES += \
     src/main.cpp \
