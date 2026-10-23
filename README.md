@@ -207,8 +207,16 @@ make -C build install INSTALL_ROOT=/tmp/pkg # 打包用，装到 /tmp/pkg/usr/lo
 
 ## 打包（安装包）
 
-`.github/workflows/packages.yml` 是给 GitHub 镜像用的（Gitea 上不跑）：推代码、打 tag、
-PR 或手动运行时编译，并打出下面这些安装包。
+`.github/workflows/packages.yml` 是给 GitHub 镜像用的：推代码、打 tag、PR 或手动运行时编译，
+并打出下面这些安装包。
+
+> **Gitea 也会读这个目录**：Gitea Actions 兼容 GitHub，默认同时扫描 `.gitea/workflows` 和
+> `.github/workflows`，光靠 YAML 没法让 Gitea 忽略它。要它不在 Gitea 跑，三选一：
+>
+> - 仓库 **设置 → 高级设置** 里取消「启用 Actions」：整个仓库的 Actions 都停，GitHub 不受影响
+> - 或 **Actions → 安装包 → 禁用工作流**：只停这一个（Gitea 1.22+）
+> - 或服务器 `app.ini` 里设 `[actions] WORKFLOW_DIRS = .gitea/workflows`：Gitea 只读
+>   `.gitea/workflows`，`.github/workflows` 就只对 GitHub 生效（需要支持该配置的版本）
 
 | 平台 | runner | 产物 |
 | --- | --- | --- |

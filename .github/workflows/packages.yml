@@ -1,6 +1,8 @@
 name: 安装包
 
-# Gitea 不跑这个工作流；同步到 GitHub 后，这里编译并打出：
+# 同步到 GitHub 后，这里编译并打出：
+# 注意：Gitea Actions 也会读 .github/workflows，不想在 Gitea 跑需要在
+# Gitea 仓库设置里禁用 Actions / 该工作流（详见 README「打包（安装包）」）。
 #   Linux   deb / rpm（x86_64、aarch64）
 #   Windows 安装包（关联 .md）+ 便携 zip
 #   macOS   arm64 / x86_64 两个 dmg（未签名，不是公证版）
