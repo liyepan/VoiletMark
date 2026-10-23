@@ -189,7 +189,9 @@ jobs:
           icon=$(cygpath -w "$PWD/packaging/voiletmark.ico")
           script=$(cygpath -w "$PWD/packaging/windows/installer.nsi")
 
-          "$makensis" \
+          # Git Bash（MSYS）会把 /D... 当成 Unix 路径，转换成
+          # C:/Program Files/Git/DAPP_VERSION=...；这里关掉参数转换
+          MSYS2_ARG_CONV_EXCL='*' "$makensis" \
             "/DAPP_VERSION=$APP_VERSION" \
             "/DDEPLOY_DIR=$deploy" \
             "/DICON_FILE=$icon" \
