@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # 把 .app 里引用到的 Homebrew 动态库收进 Contents/Frameworks，并把引用改成包内相对路径。
 # Homebrew 的 Qt 会链到 /opt/homebrew 下的 libpng / freetype 等，macdeployqt 不会带它们。
+#
+# 注意：dylib 的 otool -L 第一行是它自己的 install name（不是依赖），要单独用 -id 改，
+# 否则会误当成依赖去 -change，改不动还一直报“没处理”。
+#
 # 用法: bundle-libs.sh <VoiletMark.app>
 set -euo pipefail
 
@@ -22,8 +26,21 @@ while [ "$round" -lt 12 ]; do
     round=$((round + 1))
     changed=0
     while IFS= read -r file; do
-        [ -f "$file" ] || continue
+        # 先把这个文件自己的 install name 从 Homebrew 路径改掉
+        self_id=$(otool -D "$file" 2>/dev/null | tail -n +2 | head -n1 || true)
+        if [ -n "$self_id" ]; then
+            case "$self_id" in
+                /opt/homebrew/*|/usr/local/*)
+                    install_name_tool -id "@executable_path/../Frameworks/$(basename "$self_id")" "$file" 2>/dev/null || true
+                    ;;
+            esac
+        fi
+
+        # 再把真正依赖的 Homebrew dylib 收进来
         while IFS= read -r dep; do
+            case "$dep" in
+                @*|/System/*|/usr/lib/*) continue ;;
+            esac
             case "$dep" in
                 /opt/homebrew/*|/usr/local/*)
                     base=$(basename "$dep")
