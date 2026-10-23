@@ -105,6 +105,8 @@ MarkdownEditor::MarkdownEditor(QWidget *parent)
     setAcceptDrops(true);
     viewport()->setMouseTracking(true);
     document()->setDocumentMargin(18);
+    // setDocumentMargin() 会把文档标记为已修改，新建编辑器时清掉
+    document()->setModified(false);
 
     m_lineNumberArea = new LineNumberArea(this);
     m_highlighter = new MarkdownHighlighter(document());

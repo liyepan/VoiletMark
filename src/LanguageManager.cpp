@@ -5,6 +5,8 @@
 #include <QSettings>
 #include <QTranslator>
 
+#include "AppConfig.h"
+
 LanguageManager *LanguageManager::instance()
 {
     static LanguageManager *manager = new LanguageManager();
@@ -30,7 +32,7 @@ QString LanguageManager::displayName(const QString &code)
 
 void LanguageManager::initialize()
 {
-    QSettings settings;
+    QSettings &settings = AppConfig::settings();
     QString code = settings.value(QStringLiteral("ui/language")).toString();
     if (!availableLanguages().contains(code)) {
         code = QLocale::system().language() == QLocale::English
@@ -77,6 +79,6 @@ void LanguageManager::setLanguage(const QString &code)
     }
 
     m_language = normalized;
-    QSettings().setValue(QStringLiteral("ui/language"), m_language);
+    AppConfig::settings().setValue(QStringLiteral("ui/language"), m_language);
     emit languageChanged();
 }

@@ -13,6 +13,8 @@
 #include <QTimer>
 #include <QXmlStreamReader>
 
+#include "AppConfig.h"
+
 namespace {
 
 QString runCommand(const QString &program, const QStringList &arguments, int timeoutMs)
@@ -184,7 +186,7 @@ void ThemeManager::initialize(Mode forcedMode, bool persist)
     if (forcedMode != Mode::System) {
         setMode(forcedMode, persist);
     } else {
-        const QString saved = QSettings().value(QStringLiteral("theme/mode")).toString();
+        const QString saved = AppConfig::settings().value(QStringLiteral("theme/mode")).toString();
         m_mode = modeFromString(saved, nullptr);
         applyScheme(schemeForMode(m_mode), true);
     }
@@ -195,7 +197,7 @@ void ThemeManager::setMode(Mode mode, bool persist)
 {
     m_mode = mode;
     if (persist)
-        QSettings().setValue(QStringLiteral("theme/mode"), modeToString(mode));
+        AppConfig::settings().setValue(QStringLiteral("theme/mode"), modeToString(mode));
 
     applyScheme(schemeForMode(m_mode), true);
 }
@@ -282,6 +284,9 @@ QMenu::item { padding: 6px 28px 6px 22px; border-radius: 5px; }
 QMenu::item:selected { background-color: @highlight; color: @highlightedText; }
 QMenu::item:disabled { color: @disabled; }
 QMenu::separator { height: 1px; background-color: @border; margin: 5px 8px; }
+QToolBar { background-color: @window; border: none; border-bottom: 1px solid @border;
+           spacing: 2px; padding: 2px 6px; }
+QToolBar::separator { width: 1px; background-color: @border; margin: 4px 6px; }
 QStatusBar { background-color: @window; color: @placeholder; border-top: 1px solid @border; }
 QStatusBar::item { border: none; }
 QPlainTextEdit { background-color: @editorBase; color: @editorText; border: none;
@@ -303,7 +308,7 @@ QPushButton { background-color: @button; color: @buttonText; border: 1px solid @
 QPushButton:hover { background-color: @highlight; color: @highlightedText; }
 QPushButton:default { background-color: @accent; color: #ffffff; border-color: @accent; }
 QToolTip { background-color: @menuBackground; color: @text; border: 1px solid @border; padding: 4px; }
-QToolButton { border: none; border-radius: 5px; padding: 3px 8px; color: @text; background: transparent; }
+QToolButton { border: none; border-radius: 5px; padding: 2px 8px; color: @text; background: transparent; }
 QToolButton:hover { background-color: @hoverBackground; }
 QToolButton:checked { background-color: @highlight; color: @highlightedText; }
 QDockWidget { color: @text; }

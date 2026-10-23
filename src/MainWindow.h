@@ -10,6 +10,7 @@ class QDockWidget;
 class QLabel;
 class QPushButton;
 class QStackedWidget;
+class QToolBar;
 class QToolButton;
 class GitRunner;
 class QListWidget;
@@ -35,6 +36,7 @@ private:
     enum class Eol { Lf, Crlf };
 
     void createActions();
+    void createToolBar();
     void createSidebar();
     void createMenus();
     void createStatusBar();
@@ -51,7 +53,10 @@ private:
     void showWelcomeDocument();
 
     void addRecentFile(const QString &path);
+    void addRecentFolder(const QString &path);
     void refreshRecentMenu();
+    void fillRecentFilesMenu(QMenu *menu);
+    void fillRecentFoldersMenu(QMenu *menu);
     void loadRecentFiles();
 
     void chooseFolder();
@@ -140,6 +145,7 @@ private:
     Eol m_eol = Eol::Lf;
     bool m_hasBom = false;
     QStringList m_recentFiles;
+    QStringList m_recentFolders;
     QString m_lastDirectory;
 
     QAction *m_newAction = nullptr;
@@ -173,6 +179,12 @@ private:
     QAction *m_headingActions[6] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
 
     QMenu *m_recentMenu = nullptr;
+    QMenu *m_recentFolderMenu = nullptr;
+    QMenu *m_toolRecentFilesMenu = nullptr;
+    QMenu *m_toolRecentFoldersMenu = nullptr;
+    QToolButton *m_toolRecentFilesButton = nullptr;
+    QToolButton *m_toolRecentFoldersButton = nullptr;
+    QToolBar *m_toolBar = nullptr;
     QMenu *m_fileMenu = nullptr;
     QMenu *m_editMenu = nullptr;
     QMenu *m_viewMenu = nullptr;

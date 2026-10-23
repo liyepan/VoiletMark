@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 
+#include "AppConfig.h"
 #include "GitRunner.h"
 #include "LanguageManager.h"
 #include "MarkdownEditor.h"
@@ -43,6 +44,7 @@
 #include <QTextCursor>
 #include <QTextDocument>
 #include <QTimer>
+#include <QToolBar>
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -176,8 +178,9 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_git, &GitRunner::finished, this, &MainWindow::onGitFinished);
 
     createActions();
-    createSidebar();
     createMenus();
+    createToolBar();
+    createSidebar();
     createStatusBar();
     loadSettings();
     refreshRecentMenu();
@@ -193,10 +196,49 @@ MainWindow::MainWindow(QWidget *parent)
     connect(LanguageManager::instance(), &LanguageManager::languageChanged,
             this, &MainWindow::retranslateUi);
 
-    showWelcomeDocument();
+    // 恢复上次打开的文件；没有记录或文件已不存在时显示欢迎文档
+    const QString lastFile =
+        AppConfig::settings().value(QStringLiteral("session/lastFile")).toString();
+    if (!lastFile.isEmpty() && QFileInfo::exists(lastFile)) {
+        openPath(lastFile);
+    } else {
+        showWelcomeDocument();
+    }
+
     updateEditActionStates();
     updateStatusBar();
     m_editor->setFocus();
+}
+
+void MainWindow::createToolBar()
+{
+    m_toolBar = addToolBar(tr("常用"));
+    m_toolBar->setObjectName(QStringLiteral("mainToolBar"));
+    m_toolBar->setMovable(false);
+    m_toolBar->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    m_toolBar->setIconSize(QSize(16, 16));
+
+    m_toolBar->addAction(m_newAction);
+    m_toolBar->addAction(m_openAction);
+    m_toolBar->addAction(m_saveAction);
+    m_toolBar->addSeparator();
+
+    const auto makeMenuButton = [this](const QString &text, QMenu **target) {
+        QToolButton *button = new QToolButton(m_toolBar);
+        button->setText(text);
+        button->setPopupMode(QToolButton::InstantPopup);
+        button->setToolButtonStyle(Qt::ToolButtonTextOnly);
+        button->setCursor(Qt::PointingHandCursor);
+
+        QMenu *menu = new QMenu(button);
+        button->setMenu(menu);
+        m_toolBar->addWidget(button);
+        *target = menu;
+        return button;
+    };
+
+    m_toolRecentFilesButton = makeMenuButton(tr("最近文件"), &m_toolRecentFilesMenu);
+    m_toolRecentFoldersButton = makeMenuButton(tr("最近目录"), &m_toolRecentFoldersMenu);
 }
 
 void MainWindow::createActions()
@@ -286,7 +328,7 @@ void MainWindow::createActions()
             const QSignalBlocker blocker(m_sidebarButton);
             m_sidebarButton->setChecked(visible);
         }
-        QSettings().setValue(QStringLiteral("window/sidebarVisible"), visible);
+        AppConfig::settings().setValue(QStringLiteral("window/sidebarVisible"), visible);
     });
 
     m_sourceModeAction = new QAction(tr("源代码模式"), this);
@@ -443,7 +485,8 @@ void MainWindow::createMenus()
     m_fileMenu->addAction(m_newAction);
     m_fileMenu->addAction(m_openAction);
     m_fileMenu->addAction(m_openFolderAction);
-    m_recentMenu = m_fileMenu->addMenu(tr("最近打开"));
+    m_recentMenu = m_fileMenu->addMenu(tr("最近文件"));
+    m_recentFolderMenu = m_fileMenu->addMenu(tr("最近目录"));
     m_fileMenu->addSeparator();
     m_fileMenu->addAction(m_saveAction);
     m_fileMenu->addAction(m_saveAsAction);
@@ -556,7 +599,7 @@ void MainWindow::createStatusBar()
 
 void MainWindow::loadSettings()
 {
-    QSettings settings;
+    QSettings &settings = AppConfig::settings();
 
     const QByteArray geometry = settings.value(QStringLiteral("window/geometry")).toByteArray();
     if (!geometry.isEmpty())
@@ -604,7 +647,7 @@ void MainWindow::loadSettings()
 
 void MainWindow::saveSettings()
 {
-    QSettings settings;
+    QSettings &settings = AppConfig::settings();
     settings.setValue(QStringLiteral("window/geometry"), saveGeometry());
     settings.setValue(QStringLiteral("editor/fontSize"), m_editor->editorFontPointSize());
     settings.setValue(QStringLiteral("editor/wordWrap"), m_wrapAction->isChecked());
@@ -612,6 +655,7 @@ void MainWindow::saveSettings()
     settings.setValue(QStringLiteral("files/recent"), m_recentFiles);
     settings.setValue(QStringLiteral("files/folder"), m_folderPath);
     settings.setValue(QStringLiteral("window/sidebarVisible"), m_sidebar->isVisible());
+    settings.sync();
 }
 
 void MainWindow::closeEvent(QCloseEvent *event)
@@ -882,6 +926,7 @@ bool MainWindow::maybeSave()
 void MainWindow::setCurrentFile(const QString &path)
 {
     m_currentPath = path;
+    AppConfig::settings().setValue(QStringLiteral("session/lastFile"), path);
     if (!path.isEmpty()) {
         m_lastDirectory = QFileInfo(path).absolutePath();
         setWindowFilePath(path);
@@ -926,7 +971,7 @@ void MainWindow::changeZoom(int direction)
     const int size = (direction == 0) ? kDefaultFontSize
                                       : m_editor->editorFontPointSize() + direction;
     m_editor->setEditorFontPointSize(size);
-    QSettings().setValue(QStringLiteral("editor/fontSize"), m_editor->editorFontPointSize());
+    AppConfig::settings().setValue(QStringLiteral("editor/fontSize"), m_editor->editorFontPointSize());
 }
 
 void MainWindow::resetZoom()
@@ -937,7 +982,7 @@ void MainWindow::resetZoom()
 void MainWindow::setWordWrapEnabled(bool enabled)
 {
     m_editor->setLineWrapMode(enabled ? QPlainTextEdit::WidgetWidth : QPlainTextEdit::NoWrap);
-    QSettings().setValue(QStringLiteral("editor/wordWrap"), enabled);
+    AppConfig::settings().setValue(QStringLiteral("editor/wordWrap"), enabled);
 }
 
 void MainWindow::applyThemeMode(int mode)
@@ -957,7 +1002,14 @@ void MainWindow::retranslateUi()
     m_viewMenu->setTitle(tr("视图"));
     m_formatMenu->setTitle(tr("格式"));
     m_helpMenu->setTitle(tr("帮助"));
-    m_recentMenu->setTitle(tr("最近打开"));
+    m_recentMenu->setTitle(tr("最近文件"));
+    m_recentFolderMenu->setTitle(tr("最近目录"));
+    if (m_toolBar)
+        m_toolBar->setWindowTitle(tr("常用"));
+    if (m_toolRecentFilesButton)
+        m_toolRecentFilesButton->setText(tr("最近文件"));
+    if (m_toolRecentFoldersButton)
+        m_toolRecentFoldersButton->setText(tr("最近目录"));
     m_themeMenu->setTitle(tr("主题"));
     m_headingMenu->setTitle(tr("标题"));
     m_languageMenu->setTitle(tr("语言"));
@@ -1008,7 +1060,7 @@ void MainWindow::retranslateUi()
     m_languageChineseAction->setChecked(language == QLatin1String("zh_CN"));
     m_languageEnglishAction->setChecked(language == QLatin1String("en"));
 
-    // 侧栏、最近打开、欢迎文档都跟着换
+    // 侧栏、最近文件、欢迎文档都跟着换
     m_displayedFolder.clear();
     refreshRecentMenu();
     refreshFolder();
@@ -1034,6 +1086,8 @@ void MainWindow::showAbout()
                    "<p>基于 Qt %2 与 C++17 构建。</p>")
                     .arg(QCoreApplication::applicationVersion(),
                          QString::fromLatin1(qVersion())));
+    box.setInformativeText(
+        tr("配置文件：%1").arg(QDir::toNativeSeparators(AppConfig::filePath())));
     box.setStandardButtons(QMessageBox::Ok);
     box.exec();
 }
@@ -1045,43 +1099,92 @@ void MainWindow::addRecentFile(const QString &path)
     m_recentFiles.prepend(absolutePath);
     while (m_recentFiles.size() > kMaxRecentFiles)
         m_recentFiles.removeLast();
+    AppConfig::settings().setValue(QStringLiteral("files/recent"), m_recentFiles);
     refreshRecentMenu();
-    QSettings().setValue(QStringLiteral("files/recent"), m_recentFiles);
 }
 
 void MainWindow::loadRecentFiles()
 {
-    m_recentFiles = QSettings().value(QStringLiteral("files/recent")).toStringList();
+    m_recentFiles = AppConfig::settings().value(QStringLiteral("files/recent")).toStringList();
     m_recentFiles.removeDuplicates();
     while (m_recentFiles.size() > kMaxRecentFiles)
         m_recentFiles.removeLast();
+
+    m_recentFolders =
+        AppConfig::settings().value(QStringLiteral("files/recentFolders")).toStringList();
+    m_recentFolders.removeDuplicates();
+    while (m_recentFolders.size() > kMaxRecentFiles)
+        m_recentFolders.removeLast();
 }
 
 void MainWindow::refreshRecentMenu()
 {
-    if (!m_recentMenu)
+    fillRecentFilesMenu(m_recentMenu);
+    fillRecentFilesMenu(m_toolRecentFilesMenu);
+    fillRecentFoldersMenu(m_recentFolderMenu);
+    fillRecentFoldersMenu(m_toolRecentFoldersMenu);
+}
+
+void MainWindow::fillRecentFilesMenu(QMenu *menu)
+{
+    if (!menu)
         return;
 
-    m_recentMenu->clear();
+    menu->clear();
     if (m_recentFiles.isEmpty()) {
-        QAction *empty = m_recentMenu->addAction(tr("（暂无记录）"));
+        QAction *empty = menu->addAction(tr("（暂无记录）"));
         empty->setEnabled(false);
         return;
     }
 
     for (const QString &path : m_recentFiles) {
-        QAction *action = m_recentMenu->addAction(QDir::toNativeSeparators(path));
+        QAction *action = menu->addAction(QDir::toNativeSeparators(path));
         action->setToolTip(path);
-        connect(action, &QAction::triggered, this, [this, path] {
-            openPath(path);
-        });
+        connect(action, &QAction::triggered, this, [this, path] { openPath(path); });
     }
-    m_recentMenu->addSeparator();
-    m_recentMenu->addAction(tr("清空列表"), this, [this] {
+    menu->addSeparator();
+    menu->addAction(tr("清空列表"), this, [this] {
         m_recentFiles.clear();
-        QSettings().setValue(QStringLiteral("files/recent"), m_recentFiles);
+        AppConfig::settings().setValue(QStringLiteral("files/recent"), m_recentFiles);
         refreshRecentMenu();
     });
+}
+
+void MainWindow::fillRecentFoldersMenu(QMenu *menu)
+{
+    if (!menu)
+        return;
+
+    menu->clear();
+    if (m_recentFolders.isEmpty()) {
+        QAction *empty = menu->addAction(tr("（暂无记录）"));
+        empty->setEnabled(false);
+        return;
+    }
+
+    for (const QString &path : m_recentFolders) {
+        QAction *action = menu->addAction(QDir::toNativeSeparators(path));
+        action->setToolTip(path);
+        connect(action, &QAction::triggered, this, [this, path] { openFolder(path); });
+    }
+    menu->addSeparator();
+    menu->addAction(tr("清空列表"), this, [this] {
+        m_recentFolders.clear();
+        AppConfig::settings().setValue(QStringLiteral("files/recentFolders"), m_recentFolders);
+        refreshRecentMenu();
+    });
+}
+
+void MainWindow::addRecentFolder(const QString &path)
+{
+    const QString absolutePath = QFileInfo(path).absoluteFilePath();
+    m_recentFolders.removeAll(absolutePath);
+    m_recentFolders.prepend(absolutePath);
+    while (m_recentFolders.size() > kMaxRecentFiles)
+        m_recentFolders.removeLast();
+
+    AppConfig::settings().setValue(QStringLiteral("files/recentFolders"), m_recentFolders);
+    refreshRecentMenu();
 }
 
 void MainWindow::chooseFolder()
@@ -1101,7 +1204,8 @@ void MainWindow::openFolder(const QString &path)
 
     m_folderPath = info.absoluteFilePath();
     m_lastDirectory = m_folderPath;
-    QSettings().setValue(QStringLiteral("files/folder"), m_folderPath);
+    AppConfig::settings().setValue(QStringLiteral("files/folder"), m_folderPath);
+    addRecentFolder(m_folderPath);
     refreshFolder();
     updateGitState();
 
@@ -1243,7 +1347,7 @@ void MainWindow::setSourceModeEnabled(bool enabled)
         m_sourceModeAction->setChecked(enabled);
     }
 
-    QSettings().setValue(QStringLiteral("editor/sourceMode"), enabled);
+    AppConfig::settings().setValue(QStringLiteral("editor/sourceMode"), enabled);
 }
 
 // ---------------------------------------------------------------- Git
@@ -1356,7 +1460,7 @@ void MainWindow::switchSidebarMode(int mode)
     if (m_sidebarMode == 1)
         rebuildToc();
 
-    QSettings().setValue(QStringLiteral("window/sidebarMode"), m_sidebarMode);
+    AppConfig::settings().setValue(QStringLiteral("window/sidebarMode"), m_sidebarMode);
 }
 
 void MainWindow::rebuildToc()

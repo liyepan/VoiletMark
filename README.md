@@ -2,9 +2,12 @@
 
 一个轻量的跨平台 Markdown 编辑器，基于 **Qt 5 / C++17** 构建。
 
-当前版本 **0.11.0**。
+当前版本 **0.12.0**。
 
 ## 界面
+
+窗口从上到下依次是菜单栏、工具栏、侧栏 + 编辑区、状态栏。工具栏固定放
+**新建 / 打开 / 保存**，以及 **最近文件**、**最近目录** 两个下拉菜单。
 
 | 浅色 · 编辑模式 | 深色 · 编辑模式 |
 | --- | --- |
@@ -121,10 +124,26 @@ Windows / macOS 保留系统原生对话框。
 
 ### 文件
 
-- 新建、打开、保存、另存为、最近打开（最多 8 条）
+- 新建、打开、保存、另存为
+- **最近文件** / **最近目录**：各记 8 条，文件菜单和工具栏上的下拉菜单都能打开，
+  两个列表可以分别清空
+- **启动时自动打开上次编辑的文件**；文件已经被删掉就退回欢迎文档
 - 保留原文件的 **BOM** 与 **CRLF** 换行风格，保存时原子写入（`QSaveFile`）
 - 关闭或切换文件时提示未保存的修改
 - 记忆窗口位置、字号、换行开关、侧栏状态等设置
+
+### 配置文件
+
+所有设置都写进同一个 INI 文件，换机器时把它拷过去就行：
+
+| 平台 | 路径 |
+| --- | --- |
+| Windows | `%LOCALAPPDATA%\VoiletMark\VoiletMark\config.ini` |
+| Linux | `~/.config/VoiletMark/VoiletMark/config.ini` |
+| macOS | `~/Library/Preferences/VoiletMark/VoiletMark/config.ini` |
+
+确切路径也显示在 **帮助 → 关于 VoiletMark** 里。文件里记着主题、语言、字号、
+自动换行、侧栏状态、最近文件 / 最近目录、上次打开的文件和上次的文件夹。
 
 ### 主题
 
@@ -236,7 +255,8 @@ src/
 ├── main.cpp               入口：命令行解析、Fusion 样式、主题 / 语言初始化
 ├── ThemeManager.{h,cpp}   四种主题模式 + 系统检测 + 调色板 / QSS 生成
 ├── LanguageManager.{h,cpp} 中英文切换
-├── MainWindow.{h,cpp}     菜单、文件读写、侧栏、Git 工具栏、状态栏、设置
+├── AppConfig.{h,cpp}      所有设置共用的 config.ini
+├── MainWindow.{h,cpp}     菜单、工具栏、文件读写、侧栏、Git 工具栏、状态栏、设置
 ├── MarkdownEditor.{h,cpp} 编辑器控件：行号、缩进、代码框装饰、源码模式
 ├── MarkdownHighlighter.{h,cpp}  Markdown 着色与就地渲染
 ├── CodeHighlight.{h,cpp}  多语言语法高亮 tokenizer
