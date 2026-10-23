@@ -44,7 +44,6 @@
 #include <QTextCursor>
 #include <QTextDocument>
 #include <QTimer>
-#include <QToolBar>
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -179,7 +178,6 @@ MainWindow::MainWindow(QWidget *parent)
 
     createActions();
     createMenus();
-    createToolBar();
     createSidebar();
     createStatusBar();
     loadSettings();
@@ -208,37 +206,6 @@ MainWindow::MainWindow(QWidget *parent)
     updateEditActionStates();
     updateStatusBar();
     m_editor->setFocus();
-}
-
-void MainWindow::createToolBar()
-{
-    m_toolBar = addToolBar(tr("常用"));
-    m_toolBar->setObjectName(QStringLiteral("mainToolBar"));
-    m_toolBar->setMovable(false);
-    m_toolBar->setToolButtonStyle(Qt::ToolButtonTextOnly);
-    m_toolBar->setIconSize(QSize(16, 16));
-
-    m_toolBar->addAction(m_newAction);
-    m_toolBar->addAction(m_openAction);
-    m_toolBar->addAction(m_saveAction);
-    m_toolBar->addSeparator();
-
-    const auto makeMenuButton = [this](const QString &text, QMenu **target) {
-        QToolButton *button = new QToolButton(m_toolBar);
-        button->setText(text);
-        button->setPopupMode(QToolButton::InstantPopup);
-        button->setToolButtonStyle(Qt::ToolButtonTextOnly);
-        button->setCursor(Qt::PointingHandCursor);
-
-        QMenu *menu = new QMenu(button);
-        button->setMenu(menu);
-        m_toolBar->addWidget(button);
-        *target = menu;
-        return button;
-    };
-
-    m_toolRecentFilesButton = makeMenuButton(tr("最近文件"), &m_toolRecentFilesMenu);
-    m_toolRecentFoldersButton = makeMenuButton(tr("最近目录"), &m_toolRecentFoldersMenu);
 }
 
 void MainWindow::createActions()
@@ -485,8 +452,6 @@ void MainWindow::createMenus()
     m_fileMenu->addAction(m_newAction);
     m_fileMenu->addAction(m_openAction);
     m_fileMenu->addAction(m_openFolderAction);
-    m_recentMenu = m_fileMenu->addMenu(tr("最近文件"));
-    m_recentFolderMenu = m_fileMenu->addMenu(tr("最近目录"));
     m_fileMenu->addSeparator();
     m_fileMenu->addAction(m_saveAction);
     m_fileMenu->addAction(m_saveAsAction);
@@ -565,6 +530,10 @@ void MainWindow::createMenus()
             m_headingMenu->addAction(headingAction);
     }
     m_formatMenu->addAction(m_codeBlockAction);
+
+    // 「最近文件」「最近目录」直接排进菜单栏，「帮助」固定在最后
+    m_recentMenu = menuBar()->addMenu(tr("最近文件"));
+    m_recentFolderMenu = menuBar()->addMenu(tr("最近目录"));
 
     m_helpMenu = menuBar()->addMenu(tr("帮助"));
     m_aboutAction = m_helpMenu->addAction(tr("关于 VoiletMark"), this, &MainWindow::showAbout);
@@ -1004,12 +973,6 @@ void MainWindow::retranslateUi()
     m_helpMenu->setTitle(tr("帮助"));
     m_recentMenu->setTitle(tr("最近文件"));
     m_recentFolderMenu->setTitle(tr("最近目录"));
-    if (m_toolBar)
-        m_toolBar->setWindowTitle(tr("常用"));
-    if (m_toolRecentFilesButton)
-        m_toolRecentFilesButton->setText(tr("最近文件"));
-    if (m_toolRecentFoldersButton)
-        m_toolRecentFoldersButton->setText(tr("最近目录"));
     m_themeMenu->setTitle(tr("主题"));
     m_headingMenu->setTitle(tr("标题"));
     m_languageMenu->setTitle(tr("语言"));
@@ -1120,9 +1083,7 @@ void MainWindow::loadRecentFiles()
 void MainWindow::refreshRecentMenu()
 {
     fillRecentFilesMenu(m_recentMenu);
-    fillRecentFilesMenu(m_toolRecentFilesMenu);
     fillRecentFoldersMenu(m_recentFolderMenu);
-    fillRecentFoldersMenu(m_toolRecentFoldersMenu);
 }
 
 void MainWindow::fillRecentFilesMenu(QMenu *menu)

@@ -10,7 +10,6 @@ class QDockWidget;
 class QLabel;
 class QPushButton;
 class QStackedWidget;
-class QToolBar;
 class QToolButton;
 class GitRunner;
 class QListWidget;
@@ -36,7 +35,6 @@ private:
     enum class Eol { Lf, Crlf };
 
     void createActions();
-    void createToolBar();
     void createSidebar();
     void createMenus();
     void createStatusBar();
@@ -180,11 +178,6 @@ private:
 
     QMenu *m_recentMenu = nullptr;
     QMenu *m_recentFolderMenu = nullptr;
-    QMenu *m_toolRecentFilesMenu = nullptr;
-    QMenu *m_toolRecentFoldersMenu = nullptr;
-    QToolButton *m_toolRecentFilesButton = nullptr;
-    QToolButton *m_toolRecentFoldersButton = nullptr;
-    QToolBar *m_toolBar = nullptr;
     QMenu *m_fileMenu = nullptr;
     QMenu *m_editMenu = nullptr;
     QMenu *m_viewMenu = nullptr;
