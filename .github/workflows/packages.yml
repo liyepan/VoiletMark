@@ -399,5 +399,10 @@ jobs:
           target_commitish: ${{ github.sha }}
           name: VoiletMark ${{ steps.meta.outputs.version }}
           files: dist/*
+          # 明确要求公开发布（不是草稿、不是预发布）；
+          # 已存在同名草稿时，action 会更新它并把 draft 改回 false
+          draft: false
+          prerelease: false
+          make_latest: "true"
           generate_release_notes: true
           fail_on_unmatched_files: true
