@@ -8,6 +8,11 @@ on:
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "发布 Release（用 v<版本> 当 tag，不必先打 tag）"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -101,12 +106,29 @@ jobs:
   release:
     name: 发布到 Release
     needs: package
-    # ARM 那个 job 可能因为拿不到 arm runner 而失败，这里用 !cancelled() 照常收尾；
-    # 下面单独检查 x86_64 的包在不在，缺了就不发 Release。
-    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/') }}
+    # 只有两种情况发 Release：
+    #   1. 推了 v* tag
+    #   2. 手动 Run workflow 并勾上 publish
+    # 普通推送（main / PR）只会留下 artifact，这一步显示 skipped 是正常的。
+    # 用 always() 是为了 ARM 那个 job 失败（拿不到 arm runner）时这里照常收尾，
+    # 下面会检查 x86_64 的包在不在，缺了就不发。
+    if: >-
+      always() && (
+        startsWith(github.ref, 'refs/tags/') ||
+        (github.event_name == 'workflow_dispatch' && inputs.publish)
+      )
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 读取版本号
+        id: meta
+        run: |
+          version=$(sed -n 's/^VERSION[[:space:]]*=[[:space:]]*//p' VoiletMark.pro | head -n1 | tr -d '[:space:]')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: 下载所有产物
         uses: actions/download-artifact@v4
         with:
@@ -127,9 +149,13 @@ jobs:
           sha256sum ./*.deb ./*.rpm > SHA256SUMS
           cat SHA256SUMS
 
-      - name: 挂到对应 tag 的 Release
+      - name: 挂到 Release
         uses: softprops/action-gh-release@v2
         with:
+          # 打 tag 时用那个 tag；手动发布时用 v<版本>（不存在就按当前提交新建）
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', steps.meta.outputs.version) }}
+          target_commitish: ${{ github.sha }}
+          name: VoiletMark ${{ steps.meta.outputs.version }}
           files: dist/*
           generate_release_notes: true
           fail_on_unmatched_files: true

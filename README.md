@@ -2,7 +2,7 @@
 
 一个轻量的跨平台 Markdown 编辑器，基于 **Qt 5 / C++17** 构建。
 
-当前版本 **0.12.2**。
+当前版本 **0.12.3**。
 
 ## 界面
 
@@ -215,7 +215,12 @@ make -C build install INSTALL_ROOT=/tmp/pkg # 打包用，装到 /tmp/pkg/usr/lo
 - aarch64（`ubuntu-24.04-arm`）：`..._arm64.deb` 和 `...aarch64.rpm`。这个 runner 公共仓库才有；
   私有仓库里 ARM 那一步设成了 `continue-on-error`，失败不会影响 x86_64 的包，
   也可以把 `runs-on` 换成自建的 arm64 runner
-- 每次构建都会上传 artifact；打 tag 时自动把安装包和 `SHA256SUMS` 挂到对应的 Release
+- 每次构建都会上传 artifact
+- 发 Release 的两种方式：
+  - 打 tag：`git tag v0.12.3 && git push origin v0.12.3`（同步到 GitHub 时把 tag 一起推过去）
+  - 不打 tag：**Actions → Linux 安装包 → Run workflow**，把 **publish** 勾上，
+    它会用 `v<版本>` 当 tag（不存在就按当前提交新建）并发出 Release
+- 普通推送到 main / PR 只上传 artifact，不发 Release——「发布到 Release」显示 skipped 是正常的
 
 本地打包（版本号从 `VoiletMark.pro` 里取）：
 
@@ -234,12 +239,6 @@ version=$(sed -n 's/^VERSION[[:space:]]*=[[:space:]]*//p' ../VoiletMark.pro | he
 ```bash
 sudo apt install ./voiletmark_*_amd64.deb
 sudo dnf install ./voiletmark-*.x86_64.rpm
-```
-
-要出 Release 就打个 tag（同步到 GitHub 时记得把 tag 一起推过去）：
-
-```bash
-git tag v0.12.2 && git push origin v0.12.2
 ```
 
 打 rpm 需要 `rpmbuild`（Ubuntu 上 `apt install rpm`）。rpm 的 `License` 字段现在写的是
