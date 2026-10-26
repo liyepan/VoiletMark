@@ -2,7 +2,7 @@
 
 一个轻量的跨平台 Markdown 编辑器，基于 **Qt 5 / C++17** 构建。
 
-当前版本 **0.12.6**。
+当前版本 **0.12.7**。
 
 ## 界面
 
@@ -164,6 +164,21 @@ Windows / macOS 保留系统原生对话框。
 | Linux | gsettings `color-scheme` / GTK 主题名 → KDE `kdeglobals` → XFCE `xsettings.xml` → 调色板兜底 |
 
 模式可在 **视图 → 主题** 中切换，选择会被记住。
+
+### 窗口装饰（Linux）
+
+- KDE / X11：窗口边框交给 KWin / 窗口管理器，和系统一致
+- GNOME / Wayland：启动时自动找 `QAdwaitaDecorations` 装饰插件，找到就切到 Wayland
+  并使用 Adwaita 标题栏；找不到就保持 xcb（至少还有系统标题栏，不会变成无边框）
+
+Fedora 上装一下插件即可（Fedora 的 qt5-qtwayland 已经带了让 Qt5 支持装饰插件的补丁）：
+
+```bash
+sudo dnf install qadwaitadecorations-qt5
+```
+
+装完要确认当前是 Wayland 会话（`echo $XDG_SESSION_TYPE` 输出 `wayland`），再重新打开 VoiletMark。
+X11 会话下 Adwaita 装饰不生效；其他发行版如果没有这个包，暂时只能用 xcb 的系统标题栏。
 
 ## 构建
 

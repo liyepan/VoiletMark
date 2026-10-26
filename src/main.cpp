@@ -5,13 +5,84 @@
 #include <QApplication>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
+#include <QDir>
 #include <QIcon>
+#include <QLibraryInfo>
 #include <QPixmap>
 #include <QStyleFactory>
 #include <QTimer>
 
+#ifdef Q_OS_LINUX
+namespace {
+
+bool isGnomeDesktop()
+{
+    const QString desktop = qEnvironmentVariable("XDG_CURRENT_DESKTOP").toLower();
+    return desktop.contains(QLatin1String("gnome"))
+        || desktop.contains(QLatin1String("unity"))
+        || desktop.contains(QLatin1String("pantheon"));
+}
+
+bool hasFileMatching(const QString &dirPath, const QString &pattern)
+{
+    const QDir dir(dirPath);
+    return dir.exists() && !dir.entryList({pattern}, QDir::Files).isEmpty();
+}
+
+// GNOME 的圆角标题栏/窗口按钮是 GTK 自己画的（CSD），Qt 要拿到同样的外观，
+// 得在 Wayland 下装 QAdwaitaDecorations（Fedora 的 qt5-qtwayland 还打了
+// 让 Qt5 支持装饰插件的补丁）。找不到插件时保持默认（xcb），
+// 这样至少还有窗口管理器画的标题栏，不会变成无边框。
+void configureLinuxWindowFrame()
+{
+    const bool waylandSession = !qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")
+        || qEnvironmentVariable("XDG_SESSION_TYPE").compare(QLatin1String("wayland"),
+                                                              Qt::CaseInsensitive) == 0;
+    if (!waylandSession || !isGnomeDesktop())
+        return;
+
+    const QString platform = qEnvironmentVariable("QT_QPA_PLATFORM").toLower();
+    if (!platform.isEmpty() && !platform.contains(QLatin1String("wayland")))
+        return; // 用户/系统已经指定 xcb 之类，尊重它
+
+    const QString pluginsPath = QLibraryInfo::location(QLibraryInfo::PluginsPath);
+    if (!hasFileMatching(pluginsPath + QStringLiteral("/platforms"),
+                         QStringLiteral("libqwayland*.so")))
+        return; // 这套 Qt 没有 wayland 平台插件，别乱切
+
+    const QStringList decorationDirs{
+        pluginsPath + QStringLiteral("/wayland-decoration-client"),
+        QStringLiteral("/usr/lib64/qt5/plugins/wayland-decoration-client"),
+        QStringLiteral("/usr/lib/qt5/plugins/wayland-decoration-client"),
+        QStringLiteral("/usr/lib/x86_64-linux-gnu/qt5/plugins/wayland-decoration-client"),
+        QStringLiteral("/usr/lib/aarch64-linux-gnu/qt5/plugins/wayland-decoration-client"),
+    };
+
+    bool hasAdwaita = false;
+    for (const QString &dir : decorationDirs) {
+        if (hasFileMatching(dir, QStringLiteral("*adwaita*.so"))) {
+            hasAdwaita = true;
+            break;
+        }
+    }
+    if (!hasAdwaita)
+        return;
+
+    if (qEnvironmentVariableIsEmpty("QT_WAYLAND_DECORATION"))
+        qputenv("QT_WAYLAND_DECORATION", "adwaita");
+    if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
+        qputenv("QT_QPA_PLATFORM", "wayland");
+}
+
+} // namespace
+#endif
+
 int main(int argc, char *argv[])
 {
+#ifdef Q_OS_LINUX
+    configureLinuxWindowFrame();
+#endif
+
     QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
     QCoreApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
 
