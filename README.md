@@ -272,8 +272,12 @@ curl -X PUT -H "Authorization: token $TOKEN" \
 > （之前 Release 过几个小时 / 一天就没了就是这个原因，不是 GitHub 删的）。
 > 发新版本的正确顺序：改 `VERSION` → 提交 → 在 Gitea 打 `git tag v<版本>` 并 push → 同步到 GitHub。
 > 只改 `VERSION` 不打 tag 的话，工作流会在 GitHub 上临时建一个 tag，下一次镜像同步就会把它删掉。
+>
+> 不想每次手打 tag：在 Gitea **设置 → 应用** 生成带 `write:repository` 权限的令牌，
+> 在 GitHub 仓库 **Settings → Secrets and variables → Actions** 里加一个 `GITEA_TOKEN`，
+> 工作流发版时会自动把 tag 补回 Gitea（没配就跳过，不影响别的步骤）。
 
-当前 `v0.12.8` 的 tag 已经补推到 Gitea，同步过去后会重新生成 Release。
+`v0.12.8` 的 tag 已补推到 Gitea，Release 已重新生成；以后每个版本我会连 tag 一起推。
 
 ### 本地打包（Linux）
 
