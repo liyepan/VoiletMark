@@ -1,6 +1,6 @@
 TEMPLATE = app
 TARGET   = VoiletMark
-VERSION  = 0.12.7
+VERSION  = 0.12.8
 
 QT += core gui widgets
 

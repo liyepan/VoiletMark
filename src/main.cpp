@@ -31,8 +31,9 @@ bool hasFileMatching(const QString &dirPath, const QString &pattern)
 
 // GNOME 的圆角标题栏/窗口按钮是 GTK 自己画的（CSD），Qt 要拿到同样的外观，
 // 得在 Wayland 下装 QAdwaitaDecorations（Fedora 的 qt5-qtwayland 还打了
-// 让 Qt5 支持装饰插件的补丁）。找不到插件时保持默认（xcb），
-// 这样至少还有窗口管理器画的标题栏，不会变成无边框。
+// 让 Qt5 支持装饰插件的补丁）。没有插件时 Qt5 在 GNOME Wayland 下会是
+// 无边框窗口，所以退到 XWayland —— Mutter 会给 X11 窗口画系统标题栏，
+// Ubuntu 24.04 这类没有该插件的发行版就走这条路。
 void configureLinuxWindowFrame()
 {
     const bool waylandSession = !qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")
@@ -46,32 +47,36 @@ void configureLinuxWindowFrame()
         return; // 用户/系统已经指定 xcb 之类，尊重它
 
     const QString pluginsPath = QLibraryInfo::location(QLibraryInfo::PluginsPath);
-    if (!hasFileMatching(pluginsPath + QStringLiteral("/platforms"),
-                         QStringLiteral("libqwayland*.so")))
-        return; // 这套 Qt 没有 wayland 平台插件，别乱切
-
-    const QStringList decorationDirs{
-        pluginsPath + QStringLiteral("/wayland-decoration-client"),
-        QStringLiteral("/usr/lib64/qt5/plugins/wayland-decoration-client"),
-        QStringLiteral("/usr/lib/qt5/plugins/wayland-decoration-client"),
-        QStringLiteral("/usr/lib/x86_64-linux-gnu/qt5/plugins/wayland-decoration-client"),
-        QStringLiteral("/usr/lib/aarch64-linux-gnu/qt5/plugins/wayland-decoration-client"),
-    };
+    const bool hasWayland = hasFileMatching(pluginsPath + QStringLiteral("/platforms"),
+                                            QStringLiteral("libqwayland*.so"));
 
     bool hasAdwaita = false;
-    for (const QString &dir : decorationDirs) {
-        if (hasFileMatching(dir, QStringLiteral("*adwaita*.so"))) {
-            hasAdwaita = true;
-            break;
+    if (hasWayland) {
+        const QStringList decorationDirs{
+            pluginsPath + QStringLiteral("/wayland-decoration-client"),
+            QStringLiteral("/usr/lib64/qt5/plugins/wayland-decoration-client"),
+            QStringLiteral("/usr/lib/qt5/plugins/wayland-decoration-client"),
+            QStringLiteral("/usr/lib/x86_64-linux-gnu/qt5/plugins/wayland-decoration-client"),
+            QStringLiteral("/usr/lib/aarch64-linux-gnu/qt5/plugins/wayland-decoration-client"),
+        };
+        for (const QString &dir : decorationDirs) {
+            if (hasFileMatching(dir, QStringLiteral("*adwaita*.so"))) {
+                hasAdwaita = true;
+                break;
+            }
         }
     }
-    if (!hasAdwaita)
-        return;
 
-    if (qEnvironmentVariableIsEmpty("QT_WAYLAND_DECORATION"))
-        qputenv("QT_WAYLAND_DECORATION", "adwaita");
-    if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
-        qputenv("QT_QPA_PLATFORM", "wayland");
+    if (hasWayland && hasAdwaita) {
+        if (qEnvironmentVariableIsEmpty("QT_WAYLAND_DECORATION"))
+            qputenv("QT_WAYLAND_DECORATION", "adwaita");
+        if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
+            qputenv("QT_QPA_PLATFORM", "wayland");
+        return;
+    }
+
+    if (!qEnvironmentVariableIsEmpty("DISPLAY"))
+        qputenv("QT_QPA_PLATFORM", "xcb");
 }
 
 } // namespace

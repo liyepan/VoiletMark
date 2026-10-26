@@ -2,7 +2,7 @@
 
 一个轻量的跨平台 Markdown 编辑器，基于 **Qt 5 / C++17** 构建。
 
-当前版本 **0.12.7**。
+当前版本 **0.12.8**。
 
 ## 界面
 
@@ -168,17 +168,16 @@ Windows / macOS 保留系统原生对话框。
 ### 窗口装饰（Linux）
 
 - KDE / X11：窗口边框交给 KWin / 窗口管理器，和系统一致
-- GNOME / Wayland：启动时自动找 `QAdwaitaDecorations` 装饰插件，找到就切到 Wayland
-  并使用 Adwaita 标题栏；找不到就保持 xcb（至少还有系统标题栏，不会变成无边框）
+- GNOME / Wayland：
+  - 系统有 `QAdwaitaDecorations` 装饰插件时，自动切到 Wayland、用 Adwaita 标题栏
+  - 没有插件时自动退到 XWayland（`QT_QPA_PLATFORM=xcb`），由 Mutter 画系统标题栏，
+    不会出现无边框窗口
+- Ubuntu 24.04 仓库里没有这个插件，走 xcb 系统标题栏；
+  Fedora 的 RPM 里加了 `Recommends: qadwaitadecorations-qt5`，dnf 会顺带装上，
+  装好后就是 Adwaita 标题栏
 
-Fedora 上装一下插件即可（Fedora 的 qt5-qtwayland 已经带了让 Qt5 支持装饰插件的补丁）：
-
-```bash
-sudo dnf install qadwaitadecorations-qt5
-```
-
-装完要确认当前是 Wayland 会话（`echo $XDG_SESSION_TYPE` 输出 `wayland`），再重新打开 VoiletMark。
-X11 会话下 Adwaita 装饰不生效；其他发行版如果没有这个包，暂时只能用 xcb 的系统标题栏。
+想强制某一种方式可以自己设 `QT_QPA_PLATFORM`：`xcb` 用系统标题栏，
+`wayland` + `QT_WAYLAND_DECORATION=adwaita` 用 Adwaita 装饰。
 
 ## 构建
 

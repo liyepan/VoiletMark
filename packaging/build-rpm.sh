@@ -41,6 +41,9 @@ License:     Proprietary
 URL:         https://git.linuxacme.com/liyepan/VoiletMark
 BuildArch:   $arch
 AutoReqProv: yes
+# GNOME/Wayland 下要拿 Adwaita 标题栏得靠这个装饰插件；Fedora 默认没装，
+# 用弱依赖让 dnf 顺带装上（源里没有这个包时忽略）
+Recommends:  qadwaitadecorations-qt5
 
 %description
 VoiletMark is a Markdown editor built with Qt 5 and C++17. It renders
