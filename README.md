@@ -265,8 +265,15 @@ curl -X PUT -H "Authorization: token $TOKEN" \
 
 - 推 main、打 tag、手动 Run workflow 都会**自动发 Release**（PR 不发）
 - tag 用 `v<版本>`，版本号在 `VoiletMark.pro` 的 `VERSION` 里；同一版本多次推送会更新同一个 Release 的安装包
-- 想发新版本就改 `VERSION`，下一次推送会自动建 `v<新版本>` 的 Release
 - Release 是正式发布（不是草稿 / 预发布），并设为 Latest
+
+> ⚠️ **tag 必须先在 Gitea 存在**。Gitea 的 push mirror 对 GitHub 是强推（`--mirror`），
+> GitHub 上多出来的 tag 会被删掉；tag 一没，挂在它上面的 Release 也会跟着消失
+> （之前 Release 过几个小时 / 一天就没了就是这个原因，不是 GitHub 删的）。
+> 发新版本的正确顺序：改 `VERSION` → 提交 → 在 Gitea 打 `git tag v<版本>` 并 push → 同步到 GitHub。
+> 只改 `VERSION` 不打 tag 的话，工作流会在 GitHub 上临时建一个 tag，下一次镜像同步就会把它删掉。
+
+当前 `v0.12.8` 的 tag 已经补推到 Gitea，同步过去后会重新生成 Release。
 
 ### 本地打包（Linux）
 

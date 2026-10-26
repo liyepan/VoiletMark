@@ -353,14 +353,16 @@ jobs:
   release:
     name: 发布到 Release
     needs: [linux, windows, macos-arm64, macos-x86_64]
-    # 打 tag 或手动勾 publish 才发；普通推送/PR 只留 artifact。
-    # always() 是为了某个平台失败时其它产物还能发出来。
     # 推 main / 打 tag / 手动运行都自动发 Release（PR 不发）；
     # 非 github.com（比如 Gitea）直接跳过。always() 保证某个平台失败时其它产物还能发。
     if: >-
       always() && !cancelled() &&
       github.server_url == 'https://github.com' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    # main 和 tag 可能同时触发，串行执行，避免两个 run 同时改同一个 Release
+    concurrency:
+      group: release-${{ github.repository }}
+      cancel-in-progress: false
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
