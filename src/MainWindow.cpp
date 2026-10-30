@@ -706,6 +706,14 @@ bool MainWindow::openPath(const QString &path)
     if (!maybeSave())
         return false;
 
+    // 打开的是当前文件夹外面的单个文件：把已经打开的目录关掉
+    bool closeCurrentFolder = false;
+    if (!m_folderPath.isEmpty()) {
+        const QString relative = QDir(m_folderPath).relativeFilePath(absolutePath);
+        closeCurrentFolder = relative.startsWith(QLatin1String(".."))
+            || QDir::isAbsolutePath(relative);
+    }
+
     QFile file(absolutePath);
     if (!file.open(QIODevice::ReadOnly)) {
         QMessageBox::warning(this, tr("无法打开文件"),
@@ -715,6 +723,9 @@ bool MainWindow::openPath(const QString &path)
     }
     const QByteArray raw = file.readAll();
     file.close();
+
+    if (closeCurrentFolder)
+        closeFolder();
 
     m_hasBom = raw.startsWith("\xEF\xBB\xBF");
     QString text = QString::fromUtf8(m_hasBom ? raw.mid(3) : raw);
@@ -1172,6 +1183,18 @@ void MainWindow::openFolder(const QString &path)
 
     m_sidebar->setVisible(true);
     m_sidebarAction->setChecked(true);
+}
+
+void MainWindow::closeFolder()
+{
+    if (m_folderPath.isEmpty())
+        return;
+
+    m_folderPath.clear();
+    m_displayedFolder.clear();
+    AppConfig::settings().remove(QStringLiteral("files/folder"));
+    refreshFolder();
+    updateGitState();
 }
 
 QStringList MainWindow::scanFolder() const

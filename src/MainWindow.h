@@ -59,6 +59,7 @@ private:
 
     void chooseFolder();
     void openFolder(const QString &path);
+    void closeFolder();
     void refreshFolder();
     void openSidebarItem(QListWidgetItem *item);
     void selectInSidebar(const QString &path);

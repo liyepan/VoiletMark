@@ -52,6 +52,7 @@ protected:
     void paintEvent(QPaintEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
     void dragEnterEvent(QDragEnterEvent *event) override;
@@ -119,6 +120,7 @@ private:
     bool m_updatingTable = false;
     bool m_skipTableRebuild = false;
     QTimer *m_fenceTimer = nullptr;
+    int m_hoveredCodeFence = -1;
     int m_hoveredFence = -1;
     int m_hoveredLanguage = -1;
     int m_copiedFence = -1;

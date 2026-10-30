@@ -104,6 +104,7 @@ MarkdownEditor::MarkdownEditor(QWidget *parent)
     setCursorWidth(2);
     setAcceptDrops(true);
     viewport()->setMouseTracking(true);
+    viewport()->installEventFilter(this);
     document()->setDocumentMargin(18);
     // setDocumentMargin() 会把文档标记为已修改，新建编辑器时清掉
     document()->setModified(false);
@@ -585,10 +586,18 @@ void MarkdownEditor::paintEvent(QPaintEvent *event)
         painter.setPen(QPen(colors.border, 1));
         painter.drawRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), 6, 6);
 
+        // 复制按钮和语言下拉平时不画，鼠标移进代码块才出现，免得挡住代码。
+        const bool copied = (m_copiedFence == index);
+        const bool showChrome = copied
+            || m_hoveredCodeFence == index
+            || m_hoveredFence == index
+            || m_hoveredLanguage == index;
+        if (!showChrome)
+            continue;
+
         drawBadge(languageRect(index), languageLabel(index) + QStringLiteral(" \u25be"),
                   m_hoveredLanguage == index, false);
 
-        const bool copied = (m_copiedFence == index);
         drawBadge(copyButtonRect(index), copied ? tr("已复制") : tr("复制"),
                   m_hoveredFence == index, copied);
     }
@@ -778,20 +787,30 @@ void MarkdownEditor::mouseMoveEvent(QMouseEvent *event)
     if (m_sourceMode)
         return;
 
+    int hoveredCodeFence = -1;
     int hoveredCopy = -1;
     int hoveredLanguage = -1;
     for (int index = 0; index < m_codeFences.size(); ++index) {
+        const QRectF rect = codeFenceRect(index);
+        if (rect.isValid() && rect.contains(event->pos()))
+            hoveredCodeFence = index;
+
         if (languageRect(index).contains(event->pos())) {
             hoveredLanguage = index;
+            hoveredCodeFence = index;
             break;
         }
         if (copyButtonRect(index).contains(event->pos())) {
             hoveredCopy = index;
+            hoveredCodeFence = index;
             break;
         }
     }
 
-    if (hoveredCopy != m_hoveredFence || hoveredLanguage != m_hoveredLanguage) {
+    if (hoveredCodeFence != m_hoveredCodeFence
+        || hoveredCopy != m_hoveredFence
+        || hoveredLanguage != m_hoveredLanguage) {
+        m_hoveredCodeFence = hoveredCodeFence;
         m_hoveredFence = hoveredCopy;
         m_hoveredLanguage = hoveredLanguage;
         viewport()->setCursor((hoveredCopy >= 0 || hoveredLanguage >= 0)
@@ -801,9 +820,49 @@ void MarkdownEditor::mouseMoveEvent(QMouseEvent *event)
     }
 }
 
+bool MarkdownEditor::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == viewport() && event->type() == QEvent::Leave) {
+        if (m_hoveredCodeFence != -1 || m_hoveredFence != -1 || m_hoveredLanguage != -1) {
+            m_hoveredCodeFence = -1;
+            m_hoveredFence = -1;
+            m_hoveredLanguage = -1;
+            viewport()->setCursor(Qt::IBeamCursor);
+            viewport()->update();
+        }
+    }
+    return QPlainTextEdit::eventFilter(watched, event);
+}
+
 void MarkdownEditor::mousePressEvent(QMouseEvent *event)
 {
     if (!m_sourceMode && event->button() == Qt::LeftButton) {
+        // 代码块在文档最后时，闭合围栏那行被藏成极细的一行，鼠标点不到它，
+        // 光标就会困在代码块里。点在最后一块下面的空白处就直接补一个空行。
+        if (!m_codeFences.isEmpty()) {
+            const QTextBlock last = document()->lastBlock();
+            const QRectF lastRect =
+                blockBoundingGeometry(last).translated(contentOffset());
+            if (event->pos().y() > lastRect.bottom()) {
+                for (int index = m_codeFences.size() - 1; index >= 0; --index) {
+                    const CodeFence &fence = m_codeFences.at(index);
+                    const int end = fence.close >= 0 ? fence.close
+                                                     : document()->blockCount() - 1;
+                    if (last.blockNumber() < fence.open || last.blockNumber() > end)
+                        continue;
+
+                    QTextCursor cursor(document());
+                    cursor.movePosition(QTextCursor::End);
+                    if (fence.close < 0)
+                        cursor.insertText(QStringLiteral("\n```"));
+                    cursor.insertBlock();
+                    setTextCursor(cursor);
+                    ensureCursorVisible();
+                    return;
+                }
+            }
+        }
+
         for (int index = 0; index < m_codeFences.size(); ++index) {
             if (languageRect(index).contains(event->pos())) {
                 showLanguageMenu(index);
